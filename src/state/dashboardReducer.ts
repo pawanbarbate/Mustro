@@ -47,6 +47,13 @@ export interface DashboardState {
   toastMessage?: string | null;
   toastExpiresAt?: number;
   inspectingLog?: LogEntry | null;
+  isWrapMode: boolean;
+  inspectorScrollOffset: number;
+  inspectorTab: 'formatted' | 'raw';
+  selectedLogIndex: number;
+  expandedLogIds: Record<string | number, boolean>;
+  mouseMode: 'interactive' | 'native';
+  copiedLogId: string | number | null;
 }
 
 export const initialDashboardState: DashboardState = {
@@ -69,7 +76,14 @@ export const initialDashboardState: DashboardState = {
   filterOptions: FILTER_OPTIONS,
   showHelp: false,
   toastMessage: null,
-  inspectingLog: null
+  inspectingLog: null,
+  isWrapMode: false,
+  inspectorScrollOffset: 0,
+  inspectorTab: 'formatted',
+  selectedLogIndex: 0,
+  expandedLogIds: {},
+  mouseMode: 'native',
+  copiedLogId: null
 };
 
 export function configToServices(config?: DevPulseConfig): Service[] {
@@ -151,7 +165,16 @@ export type DashboardAction =
   | { type: 'SHOW_TOAST'; message: string; durationMs?: number }
   | { type: 'HIDE_TOAST' }
   | { type: 'OPEN_LOG_INSPECTOR'; log: LogEntry }
-  | { type: 'CLOSE_LOG_INSPECTOR' };
+  | { type: 'CLOSE_LOG_INSPECTOR' }
+  | { type: 'TOGGLE_WRAP_MODE' }
+  | { type: 'SCROLL_INSPECTOR'; delta: number; maxScroll: number }
+  | { type: 'SET_INSPECTOR_TAB'; tab: 'formatted' | 'raw' }
+  | { type: 'SELECT_LOG_ROW'; index: number }
+  | { type: 'NAVIGATE_LOG_SELECTION'; delta: number; maxIndex: number }
+  | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number }
+  | { type: 'TOGGLE_ALL_JSON_EXPANSION'; forceState?: boolean }
+  | { type: 'TOGGLE_MOUSE_MODE' }
+  | { type: 'SET_COPIED_FLASH'; logId: string | number | null };
 
 export function dashboardReducer(state: DashboardState, action: DashboardAction): DashboardState {
   switch (action.type) {
@@ -161,7 +184,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         ...state,
         selectedIndex: clamped,
         activePanel: 'services',
-        serviceLogScroll: 0
+        serviceLogScroll: 0,
+        selectedLogIndex: 0
       };
     }
 
@@ -171,14 +195,16 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         ...state,
         selectedIndex: nextIndex,
         activePanel: 'services',
-        serviceLogScroll: 0
+        serviceLogScroll: 0,
+        selectedLogIndex: 0
       };
     }
 
     case 'SET_ACTIVE_PANEL':
       return {
         ...state,
-        activePanel: action.panel
+        activePanel: action.panel,
+        selectedLogIndex: 0
       };
 
     case 'SET_ACTIVE_TAB':
@@ -186,7 +212,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         ...state,
         activeTab: action.tab,
         activePanel: 'serviceLogs',
-        serviceLogScroll: 0
+        serviceLogScroll: 0,
+        selectedLogIndex: 0
       };
 
     case 'SET_NARROW_TAB':
@@ -494,14 +521,90 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
     case 'OPEN_LOG_INSPECTOR': {
       return {
         ...state,
-        inspectingLog: action.log
+        inspectingLog: action.log,
+        inspectorScrollOffset: 0,
+        inspectorTab: 'formatted'
       };
     }
 
     case 'CLOSE_LOG_INSPECTOR': {
       return {
         ...state,
-        inspectingLog: null
+        inspectingLog: null,
+        inspectorScrollOffset: 0
+      };
+    }
+
+    case 'TOGGLE_WRAP_MODE': {
+      return {
+        ...state,
+        isWrapMode: !state.isWrapMode
+      };
+    }
+
+    case 'SCROLL_INSPECTOR': {
+      const nextOffset = Math.max(0, Math.min(action.maxScroll, state.inspectorScrollOffset + action.delta));
+      return {
+        ...state,
+        inspectorScrollOffset: nextOffset
+      };
+    }
+
+    case 'SET_INSPECTOR_TAB': {
+      return {
+        ...state,
+        inspectorTab: action.tab,
+        inspectorScrollOffset: 0
+      };
+    }
+
+    case 'SELECT_LOG_ROW': {
+      return {
+        ...state,
+        selectedLogIndex: Math.max(0, action.index)
+      };
+    }
+
+    case 'NAVIGATE_LOG_SELECTION': {
+      const nextIndex = Math.max(0, Math.min(action.maxIndex, state.selectedLogIndex + action.delta));
+      return {
+        ...state,
+        selectedLogIndex: nextIndex
+      };
+    }
+
+    case 'TOGGLE_LOG_EXPANSION': {
+      const currentVal = state.expandedLogIds[action.logId];
+      const isCurrentlyExpanded = currentVal !== undefined ? currentVal : state.isWrapMode;
+      return {
+        ...state,
+        expandedLogIds: {
+          ...state.expandedLogIds,
+          [action.logId]: !isCurrentlyExpanded
+        }
+      };
+    }
+
+    case 'TOGGLE_ALL_JSON_EXPANSION': {
+      return {
+        ...state,
+        expandedLogIds: action.forceState !== undefined
+          ? (action.forceState ? state.expandedLogIds : {})
+          : {}
+      };
+    }
+
+    case 'TOGGLE_MOUSE_MODE': {
+      return {
+        ...state,
+        mouseMode: state.mouseMode === 'interactive' ? 'native' : 'interactive'
+      };
+    }
+
+    case 'SET_COPIED_FLASH': {
+      return {
+        ...state,
+        copiedLogId: action.logId
       };
     }
 

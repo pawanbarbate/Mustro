@@ -6,7 +6,6 @@ import ServiceDetailPanel from './components/ServiceDetailPanel.js';
 import GlobalLogsPanel from './components/GlobalLogsPanel.js';
 import Footer from './components/Footer.js';
 import HelpModal from './components/HelpModal.js';
-import LogInspectorModal from './components/common/LogInspectorModal.js';
 import { createInitialDashboardState, dashboardReducer } from './state/dashboardReducer.js';
 import { useTerminalViewport } from './hooks/useTerminalViewport.js';
 import { useTerminalInput } from './hooks/useTerminalInput.js';
@@ -21,6 +20,7 @@ import {
   formatServiceErrorSummary,
   formatAllErrors
 } from './utils/clipboard.js';
+import { prettyPrintJson, parseJsonLog } from './utils/logFormatter.js';
 
 export interface DevPulseProps {
   config?: DevPulseConfig;
@@ -54,13 +54,6 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     onToggleStop: handleToggleStop,
     onSwitchConfig
   });
-
-  // Assert clean SGR mouse reporting mode on mount
-  useEffect(() => {
-    try {
-      process.stdout.write('\x1b[?1000h\x1b[?1006h');
-    } catch {}
-  }, []);
 
   // Time updater
   useEffect(() => {
@@ -96,12 +89,53 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     headerColor = theme.colors.warning;
   }
 
+  // Flash cleanup timer for inline copied indicator
+  useEffect(() => {
+    if (state.copiedLogId) {
+      const timer = setTimeout(() => {
+        dispatch({ type: 'SET_COPIED_FLASH', logId: null });
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [state.copiedLogId]);
+
+  // Mouse Mode effect
+  useEffect(() => {
+    if (state.mouseMode === 'native') {
+      try { process.stdout.write('\x1b[?1000l\x1b[?1006l'); } catch {}
+    } else {
+      try { process.stdout.write('\x1b[?1000h\x1b[?1006h'); } catch {}
+    }
+  }, [state.mouseMode]);
+
+  const handleToggleMouseMode = () => {
+    const nextMode = state.mouseMode === 'interactive' ? 'native' : 'interactive';
+    dispatch({ type: 'TOGGLE_MOUSE_MODE' });
+    if (nextMode === 'native') {
+      try { process.stdout.write('\x1b[?1000l\x1b[?1006l'); } catch {}
+      dispatch({ 
+        type: 'SHOW_TOAST', 
+        message: '🖱️ Native Mouse: Drag trackpad to select text. Press "m" to switch back.',
+        durationMs: 3500 
+      });
+    } else {
+      try { process.stdout.write('\x1b[?1000h\x1b[?1006h'); } catch {}
+      dispatch({ 
+        type: 'SHOW_TOAST', 
+        message: '🖱️ Interactive Mouse: Click buttons, tabs, and rows.',
+        durationMs: 3000 
+      });
+    }
+  };
+
   // Copy helpers
   const handleCopyCurrent = () => {
     if (state.activeTab === 'errors' && selectedService) {
-      const err = selectedService.errorLogs?.[selectedService.errorLogs.length - 1];
+      const errs = selectedService.errorLogs || [];
+      const err = errs[state.selectedLogIndex] || errs[errs.length - 1];
       if (err) {
         copyToClipboard(err.message);
+        dispatch({ type: 'SET_COPIED_FLASH', logId: err.id });
         dispatch({ type: 'SHOW_TOAST', message: `✔ Copied error from "${selectedService.name}"` });
       } else if (selectedService.lastError) {
         copyToClipboard(selectedService.lastError);
@@ -110,10 +144,20 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
         dispatch({ type: 'SHOW_TOAST', message: `ℹ No errors to copy for "${selectedService.name}"` });
       }
     } else if (selectedService) {
-      const log = selectedService.logs?.[selectedService.logs.length - 1];
+      const logs = selectedService.logs || [];
+      const log = logs[state.selectedLogIndex] || logs[logs.length - 1];
       if (log) {
-        copyToClipboard(formatLogEntry(log, selectedService.name));
-        dispatch({ type: 'SHOW_TOAST', message: `✔ Copied log from "${selectedService.name}"` });
+        const jsonRes = parseJsonLog(log.message);
+        const isExpanded = !!(jsonRes.isJson && (state.expandedLogIds[log.id] || state.isWrapMode));
+        if (isExpanded && jsonRes.parsed) {
+          copyToClipboard(prettyPrintJson(log.message));
+          dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied formatted JSON from "${selectedService.name}"` });
+        } else {
+          copyToClipboard(formatLogEntry(log, selectedService.name));
+          dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied log from "${selectedService.name}"` });
+        }
       } else {
         const text = formatServiceErrorSummary(selectedService);
         copyToClipboard(text);
@@ -124,18 +168,28 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
 
   const handleCopyLog = (log: LogEntry) => {
     copyToClipboard(log.message);
+    dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
     dispatch({ type: 'SHOW_TOAST', message: `✔ Copied log from "${log.service || selectedService?.name || 'service'}"` });
   };
 
   const handleInspectLog = (log: LogEntry) => {
-    dispatch({ type: 'OPEN_LOG_INSPECTOR', log });
+    dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId: log.id });
   };
 
   const handleCopyGlobalCurrent = () => {
-    const log = state.globalLogs[state.globalLogs.length - 1];
+    const log = state.globalLogs[state.selectedLogIndex] || state.globalLogs[state.globalLogs.length - 1];
     if (log) {
-      copyToClipboard(formatLogEntry(log));
-      dispatch({ type: 'SHOW_TOAST', message: '✔ Copied latest global log' });
+      const jsonRes = parseJsonLog(log.message);
+      const isExpanded = !!(jsonRes.isJson && (state.expandedLogIds[log.id] || state.isWrapMode));
+      if (isExpanded && jsonRes.parsed) {
+        copyToClipboard(prettyPrintJson(log.message));
+        dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied formatted global JSON' });
+      } else {
+        copyToClipboard(formatLogEntry(log));
+        dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied selected global log' });
+      }
     } else {
       dispatch({ type: 'SHOW_TOAST', message: 'ℹ No global logs to copy' });
     }
@@ -206,13 +260,20 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 scrollOffset={state.serviceLogScroll}
                 panelWidth={viewport.width}
                 height={viewport.contentHeight - 1}
+                isWrapMode={state.isWrapMode}
+                selectedLogIndex={state.selectedLogIndex}
+                expandedLogIds={state.expandedLogIds}
+                copiedLogId={state.copiedLogId}
                 onRestart={() => handleRestart(state.selectedIndex)}
                 onToggleStop={() => handleToggleStop(state.selectedIndex)}
                 onSelectTab={(tab) => dispatch({ type: 'SET_ACTIVE_TAB', tab })}
+                onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
               />
             )}
             {state.narrowTab === 'logs' && (
@@ -227,13 +288,20 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 scrollOffset={state.globalLogScroll}
                 panelWidth={viewport.width}
                 height={viewport.contentHeight - 1}
+                isWrapMode={state.isWrapMode}
+                selectedLogIndex={state.selectedLogIndex}
+                expandedLogIds={state.expandedLogIds}
+                copiedLogId={state.copiedLogId}
                 onToggleSearch={() => dispatch({ type: 'SET_SEARCHING', isSearching: !state.isSearching })}
                 onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
                 onToggleLive={() => dispatch({ type: 'TOGGLE_LIVE' })}
+                onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
               />
             )}
           </Box>
@@ -266,13 +334,20 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 panelWidth={viewport.rightPanelWidth}
                 height={viewport.detailPanelHeight}
                 isUltraCompact={viewport.isUltraCompactHeight}
+                isWrapMode={state.isWrapMode}
+                selectedLogIndex={state.selectedLogIndex}
+                expandedLogIds={state.expandedLogIds}
+                copiedLogId={state.copiedLogId}
                 onRestart={() => handleRestart(state.selectedIndex)}
                 onToggleStop={() => handleToggleStop(state.selectedIndex)}
                 onSelectTab={(tab) => dispatch({ type: 'SET_ACTIVE_TAB', tab })}
+                onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
               />
               <GlobalLogsPanel 
                 logs={state.globalLogs}
@@ -285,13 +360,20 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 scrollOffset={state.globalLogScroll}
                 panelWidth={viewport.rightPanelWidth}
                 height={viewport.globalLogsPanelHeight}
+                isWrapMode={state.isWrapMode}
+                selectedLogIndex={state.selectedLogIndex}
+                expandedLogIds={state.expandedLogIds}
+                copiedLogId={state.copiedLogId}
                 onToggleSearch={() => dispatch({ type: 'SET_SEARCHING', isSearching: !state.isSearching })}
                 onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
                 onToggleLive={() => dispatch({ type: 'TOGGLE_LIVE' })}
+                onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
               />
             </Box>
           </Box>
@@ -302,8 +384,10 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
           isConnected={true} 
           activePanel={state.activePanel} 
           width={viewport.width} 
+          mouseMode={state.mouseMode}
           onToggleHelp={() => dispatch({ type: 'TOGGLE_HELP', show: !state.showHelp })}
           onSwitchConfig={onSwitchConfig}
+          onToggleMouseMode={handleToggleMouseMode}
         />
 
         {/* 4. Optional Help Overlay Modal */}
@@ -317,30 +401,6 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
           >
             <HelpModal 
               onClose={() => dispatch({ type: 'TOGGLE_HELP', show: false })} 
-              width={viewport.width}
-              height={viewport.height}
-            />
-          </Box>
-        )}
-
-        {/* 5. Optional Log Inspector Overlay Modal */}
-        {state.inspectingLog && (
-          <Box 
-            position="absolute" 
-            width={viewport.width} 
-            height={viewport.height} 
-            alignItems="center" 
-            justifyContent="center"
-          >
-            <LogInspectorModal 
-              log={state.inspectingLog}
-              serviceName={selectedService?.name}
-              onClose={() => dispatch({ type: 'CLOSE_LOG_INSPECTOR' })}
-              onCopy={() => {
-                const text = state.inspectingLog?.message || '';
-                copyToClipboard(text);
-                dispatch({ type: 'SHOW_TOAST', message: '✔ Copied inspected message to clipboard!' });
-              }}
               width={viewport.width}
               height={viewport.height}
             />

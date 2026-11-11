@@ -8,16 +8,20 @@ export interface FooterProps {
   isConnected?: boolean;
   activePanel?: ActivePanel;
   width?: number;
+  mouseMode?: 'interactive' | 'native';
   onToggleHelp?: () => void;
   onSwitchConfig?: () => void;
+  onToggleMouseMode?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = React.memo(({ 
   isConnected = true, 
   activePanel = 'services', 
   width = 120,
+  mouseMode = 'interactive',
   onToggleHelp,
-  onSwitchConfig
+  onSwitchConfig,
+  onToggleMouseMode
 }) => {
   const isNarrow = width < 85;
 
@@ -68,8 +72,22 @@ export const Footer: React.FC<FooterProps> = React.memo(({
         </Box>
         <Text color={theme.colors.textSecondary}>Copy </Text>
 
+        <Clickable onClick={() => onToggleMouseMode?.()} flexDirection="row">
+          <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+            <Text color={theme.colors.accent} bold>m</Text>
+          </Box>
+          <Text color={mouseMode === 'native' ? theme.colors.running : theme.colors.accent} bold>
+            {mouseMode === 'native' ? 'Drag-Select ' : 'Click-Mode '}
+          </Text>
+        </Clickable>
+
         {!isNarrow && (
           <>
+            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+              <Text color={theme.colors.accent} bold>w</Text>
+            </Box>
+            <Text color={theme.colors.textSecondary}>Wrap </Text>
+
             <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
               <Text color={theme.colors.textPrimary} bold>/</Text>
             </Box>

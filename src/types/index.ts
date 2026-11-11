@@ -25,6 +25,7 @@ export interface LogEntry {
   message: string;
   level: 'info' | 'warn' | 'error' | 'INFO' | 'WARN' | 'ERROR';
   serviceColor?: string;
+  raw?: string;
 }
 
 export interface ServiceMetrics {

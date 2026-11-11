@@ -62,6 +62,10 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Toggle Live streaming logs</Text>
         </Box>
         <Box justifyContent="space-between">
+          <Text color={theme.colors.accent} bold>w</Text>
+          <Text color={theme.colors.textSecondary}>Toggle Wrap mode (multi-line vs compact)</Text>
+        </Box>
+        <Box justifyContent="space-between">
           <Text color={theme.colors.textPrimary} bold>t  or  Tab</Text>
           <Text color={theme.colors.textSecondary}>Toggle active panel focus</Text>
         </Box>
@@ -71,15 +75,23 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.running} bold>c  /  y</Text>
-          <Text color={theme.colors.textSecondary}>Copy focused log, error, or service</Text>
+          <Text color={theme.colors.textSecondary}>Copy selected log line (formatted JSON if expanded)</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.running} bold>r</Text>
+          <Text color={theme.colors.textSecondary}>Copy raw stdout stream (Restart in services)</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.running} bold>C  (Shift+C)</Text>
           <Text color={theme.colors.textSecondary}>Copy all error logs for service</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color="#A78BFA" bold>v</Text>
-          <Text color={theme.colors.textSecondary}>Inspect full log & stack trace modal</Text>
+          <Text color="#A78BFA" bold>Enter  /  v</Text>
+          <Text color={theme.colors.textSecondary}>Expand / collapse JSON log inline</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.warning} bold>m</Text>
+          <Text color={theme.colors.textSecondary}>Toggle Mouse Mode (Clickable vs Native Drag-Select)</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.textSecondary} bold>q  /  Ctrl+C</Text>

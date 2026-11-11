@@ -149,7 +149,7 @@ export const Clickable: React.FC<ClickableProps> = ({
 
   useEffect(() => {
     updateBounds();
-  }, [updateBounds]);
+  });
 
   // Clean unregister on unmount
   useEffect(() => {

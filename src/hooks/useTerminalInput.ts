@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { useInput } from 'ink';
 import { DashboardState, DashboardAction, FILTER_OPTIONS } from '../state/dashboardReducer.js';
-import { ViewportInfo } from '../types/index.js';
+import { ViewportInfo, LogEntry } from '../types/index.js';
 import { ClickManagerContextValue } from '../components/common/ClickManager.js';
 import {
   copyToClipboard,
@@ -9,6 +9,11 @@ import {
   formatServiceErrorSummary,
   formatAllErrors
 } from '../utils/clipboard.js';
+import {
+  prettyPrintJson,
+  parseJsonLog,
+  formatJsonToHighlightedLines
+} from '../utils/logFormatter.js';
 
 interface UseTerminalInputProps {
   state: DashboardState;
@@ -89,6 +94,28 @@ export function useTerminalInput({
               }
             }
           }
+        }
+
+        // If Log Inspector modal is open, mouse wheel scrolls modal
+        if (state.inspectingLog) {
+          const isJson = parseJsonLog(state.inspectingLog.message).isJson;
+          let totalLines = 0;
+          try {
+            totalLines = isJson && state.inspectorTab === 'formatted'
+              ? formatJsonToHighlightedLines(JSON.parse(state.inspectingLog.message)).length
+              : state.inspectingLog.message.split(/\r?\n/).length;
+          } catch {
+            totalLines = state.inspectingLog.message.split(/\r?\n/).length;
+          }
+          const maxVisible = Math.max(6, (viewport.height || 24) - 12);
+          const maxScroll = Math.max(0, totalLines - maxVisible);
+
+          if (baseButton === 64) {
+            dispatch({ type: 'SCROLL_INSPECTOR', delta: -2, maxScroll });
+          } else if (baseButton === 65) {
+            dispatch({ type: 'SCROLL_INSPECTOR', delta: 2, maxScroll });
+          }
+          continue;
         }
 
         // 1b. Mouse Wheel UP (Base Button 64)
@@ -187,12 +214,75 @@ export function useTerminalInput({
         dispatch({ type: 'CLOSE_LOG_INSPECTOR' });
         return;
       }
-      if (input === 'c' || input === 'y' || key.return) {
-        const text = state.inspectingLog.message;
-        copyToClipboard(text);
-        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied inspected message to clipboard!' });
+
+      // Switch Inspector Tabs (Tab / 1 / 2)
+      if (key.tab) {
+        const nextTab = state.inspectorTab === 'formatted' ? 'raw' : 'formatted';
+        dispatch({ type: 'SET_INSPECTOR_TAB', tab: nextTab });
         return;
       }
+      if (input === '1') {
+        dispatch({ type: 'SET_INSPECTOR_TAB', tab: 'formatted' });
+        return;
+      }
+      if (input === '2') {
+        dispatch({ type: 'SET_INSPECTOR_TAB', tab: 'raw' });
+        return;
+      }
+
+      // Copy Formatted JSON / formatted message
+      if (input === 'c' || input === 'y' || key.return) {
+        const text = prettyPrintJson(state.inspectingLog.message);
+        copyToClipboard(text);
+        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied formatted log to clipboard!' });
+        return;
+      }
+
+      // Copy Raw verbatim
+      if (input === 'r' || input === 'C') {
+        copyToClipboard(state.inspectingLog.message);
+        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied raw log to clipboard!' });
+        return;
+      }
+
+      // Calculate bounds for scrolling inside inspector
+      const isJson = parseJsonLog(state.inspectingLog.message).isJson;
+      let totalLines = 0;
+      try {
+        totalLines = isJson && state.inspectorTab === 'formatted'
+          ? formatJsonToHighlightedLines(JSON.parse(state.inspectingLog.message)).length
+          : state.inspectingLog.message.split(/\r?\n/).length;
+      } catch {
+        totalLines = state.inspectingLog.message.split(/\r?\n/).length;
+      }
+      const maxVisible = Math.max(6, (viewport.height || 24) - 12);
+      const maxScroll = Math.max(0, totalLines - maxVisible);
+
+      if (key.upArrow || input === 'k') {
+        dispatch({ type: 'SCROLL_INSPECTOR', delta: -1, maxScroll });
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        dispatch({ type: 'SCROLL_INSPECTOR', delta: 1, maxScroll });
+        return;
+      }
+      if (key.pageUp || input === '[') {
+        dispatch({ type: 'SCROLL_INSPECTOR', delta: -5, maxScroll });
+        return;
+      }
+      if (key.pageDown || input === ']') {
+        dispatch({ type: 'SCROLL_INSPECTOR', delta: 5, maxScroll });
+        return;
+      }
+      if (key.home) {
+        dispatch({ type: 'SCROLL_INSPECTOR', delta: -99999, maxScroll });
+        return;
+      }
+      if (key.end) {
+        dispatch({ type: 'SCROLL_INSPECTOR', delta: 99999, maxScroll });
+        return;
+      }
+
       return;
     }
 
@@ -302,14 +392,68 @@ export function useTerminalInput({
       return;
     }
 
-    // Arrow Up / Down or j / k behavior - Instant response, 0 throttle on keyboard
+    const getActiveLogList = (): LogEntry[] => {
+      if (state.activePanel === 'globalLogs') {
+        if (state.searchQuery.trim() || state.filterIndex > 0) {
+          const activeFilter = state.filterOptions[state.filterIndex] || 'All Services';
+          return state.globalLogs.filter(l => {
+            if (activeFilter !== 'All Services' && l.service.toLowerCase() !== activeFilter.toLowerCase()) {
+              return false;
+            }
+            if (state.searchQuery.trim()) {
+              const q = state.searchQuery.toLowerCase();
+              return l.message.toLowerCase().includes(q) || l.service.toLowerCase().includes(q);
+            }
+            return true;
+          });
+        }
+        return state.globalLogs;
+      }
+      if (state.activePanel === 'serviceLogs') {
+        const curSvc = state.services[state.selectedIndex];
+        if (!curSvc) return [];
+        return state.activeTab === 'errors' ? (curSvc.errorLogs || []) : (curSvc.logs || []);
+      }
+      return [];
+    };
+
+    const getVisibleLogsSlice = (): LogEntry[] => {
+      const all = getActiveLogList();
+      const maxLogs = state.activePanel === 'globalLogs'
+        ? (viewport.maxGlobalLogs || 6)
+        : (viewport.maxServiceLogs || 6);
+      const scroll = state.activePanel === 'globalLogs'
+        ? state.globalLogScroll
+        : state.serviceLogScroll;
+      const total = all.length;
+      const maxScroll = Math.max(0, total - maxLogs);
+      const eff = Math.max(0, Math.min(scroll, maxScroll));
+      const endIdx = total - eff;
+      const startIdx = Math.max(0, endIdx - maxLogs);
+      return all.slice(startIdx, endIdx);
+    };
+
+    const getSelectedLog = (): LogEntry | null => {
+      const visible = getVisibleLogsSlice();
+      return visible[state.selectedLogIndex] || visible[visible.length - 1] || null;
+    };
+
+    // Arrow Up / Down or j / k behavior - Instant response, cursor tracking and smooth scrolling
     if (key.upArrow || input === 'k') {
       if (state.activePanel === 'services') {
         dispatch({ type: 'NAVIGATE_SERVICES', delta: -1 });
       } else if (state.activePanel === 'serviceLogs') {
-        dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll: getServiceMaxScroll() });
+        if (state.selectedLogIndex > 0) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex - 1 });
+        } else {
+          dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll: getServiceMaxScroll() });
+        }
       } else if (state.activePanel === 'globalLogs') {
-        dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 1, maxScroll: getGlobalMaxScroll() });
+        if (state.selectedLogIndex > 0) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex - 1 });
+        } else {
+          dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 1, maxScroll: getGlobalMaxScroll() });
+        }
       }
       return;
     }
@@ -318,9 +462,21 @@ export function useTerminalInput({
       if (state.activePanel === 'services') {
         dispatch({ type: 'NAVIGATE_SERVICES', delta: 1 });
       } else if (state.activePanel === 'serviceLogs') {
-        dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -1, maxScroll: getServiceMaxScroll() });
+        const visible = getVisibleLogsSlice();
+        const maxIdx = Math.max(0, visible.length - 1);
+        if (state.selectedLogIndex < maxIdx) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex + 1 });
+        } else {
+          dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -1, maxScroll: getServiceMaxScroll() });
+        }
       } else if (state.activePanel === 'globalLogs') {
-        dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -1, maxScroll: getGlobalMaxScroll() });
+        const visible = getVisibleLogsSlice();
+        const maxIdx = Math.max(0, visible.length - 1);
+        if (state.selectedLogIndex < maxIdx) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex + 1 });
+        } else {
+          dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -1, maxScroll: getGlobalMaxScroll() });
+        }
       }
       return;
     }
@@ -341,11 +497,53 @@ export function useTerminalInput({
       return;
     }
 
-    // Service actions
-    if (input === 'r' || input === 'R') {
+    // Mouse Mode toggle (m or M)
+    if (input === 'm' || input === 'M') {
+      const nextMode = state.mouseMode === 'interactive' ? 'native' : 'interactive';
+      dispatch({ type: 'TOGGLE_MOUSE_MODE' });
+      if (nextMode === 'native') {
+        try { process.stdout.write('\x1b[?1000l\x1b[?1006l'); } catch {}
+        dispatch({ 
+          type: 'SHOW_TOAST', 
+          message: '🖱️ Native Mouse: Drag trackpad to select text. Press "m" to switch back.',
+          durationMs: 3500 
+        });
+      } else {
+        try { process.stdout.write('\x1b[?1000h\x1b[?1006h'); } catch {}
+        dispatch({ 
+          type: 'SHOW_TOAST', 
+          message: '🖱️ Interactive Mouse: Click buttons, tabs, and rows.',
+          durationMs: 3000 
+        });
+      }
+      return;
+    }
+
+    // Always restart on Shift+R
+    if (input === 'R') {
       if (onRestartRef.current) onRestartRef.current(stateRef.current.selectedIndex);
       return;
     }
+
+    // Service restart (r in services panel) or Copy Raw (r in log panels)
+    if (input === 'r') {
+      if (state.activePanel === 'services') {
+        if (onRestartRef.current) onRestartRef.current(stateRef.current.selectedIndex);
+      } else {
+        const targetLog = getSelectedLog();
+        if (targetLog) {
+          const rawStream = targetLog.raw || targetLog.message;
+          copyToClipboard(rawStream);
+          dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+          dispatch({ type: 'SHOW_TOAST', message: '✔ Copied raw stdout stream to clipboard!' });
+        } else {
+          dispatch({ type: 'SHOW_TOAST', message: 'ℹ No log line selected to copy' });
+        }
+      }
+      return;
+    }
+
+    // Toggle service running/stopped state
     if (input === 's' || input === 'S') {
       if (onToggleStopRef.current) onToggleStopRef.current(stateRef.current.selectedIndex);
       return;
@@ -370,36 +568,29 @@ export function useTerminalInput({
     }
 
     // Live toggle
-    if (input === 'l' || input === ' ') {
+    if (input === 'l') {
       dispatch({ type: 'TOGGLE_LIVE' });
       return;
     }
 
-    // View / Inspect full multi-line log or error modal
-    if (input === 'v' || input === 'V') {
-      const curSvc = state.services[state.selectedIndex];
-      let logToInspect = null;
-
-      if (state.activePanel === 'globalLogs') {
-        logToInspect = state.globalLogs[state.globalLogs.length - 1] || null;
-      } else if (state.activeTab === 'errors') {
-        logToInspect = curSvc?.errorLogs?.[curSvc.errorLogs.length - 1] || (curSvc?.lastError ? {
-          id: `err-inspect-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString(),
-          service: curSvc.name,
-          message: curSvc.lastError,
-          level: 'error' as const
-        } : null);
-      } else {
-        logToInspect = curSvc?.logs?.[curSvc.logs.length - 1] || null;
-      }
-
-      if (logToInspect) {
-        dispatch({ type: 'OPEN_LOG_INSPECTOR', log: logToInspect });
-      } else {
-        dispatch({ type: 'SHOW_TOAST', message: 'ℹ No logs available to inspect' });
-      }
+    // Toggle Wrap Mode (w)
+    if (input === 'w' || input === 'W') {
+      dispatch({ type: 'TOGGLE_WRAP_MODE' });
       return;
+    }
+
+    // Inline Expand / Collapse JSON (Enter, Space, or v)
+    if (key.return || input === 'v' || input === 'V' || input === ' ') {
+      if (state.activePanel === 'serviceLogs' || state.activePanel === 'globalLogs') {
+        const targetLog = getSelectedLog();
+        if (targetLog) {
+          const jsonRes = parseJsonLog(targetLog.message);
+          if (jsonRes.isJson) {
+            dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId: targetLog.id });
+            return;
+          }
+        }
+      }
     }
 
     // Copy all errors of the current service (Shift+C)
@@ -424,36 +615,24 @@ export function useTerminalInput({
           copyToClipboard(text);
           dispatch({ type: 'SHOW_TOAST', message: `✔ Copied service summary for "${curSvc.name}"` });
         }
-      } else if (state.activePanel === 'serviceLogs') {
-        if (curSvc) {
-          if (state.activeTab === 'errors') {
-            const err = curSvc.errorLogs?.[curSvc.errorLogs.length - 1];
-            if (err) {
-              copyToClipboard(err.message);
-              dispatch({ type: 'SHOW_TOAST', message: `✔ Copied error from "${curSvc.name}"` });
-            } else if (curSvc.lastError) {
-              copyToClipboard(curSvc.lastError);
-              dispatch({ type: 'SHOW_TOAST', message: `✔ Copied error from "${curSvc.name}"` });
-            } else {
-              dispatch({ type: 'SHOW_TOAST', message: `ℹ No errors to copy for "${curSvc.name}"` });
-            }
+      } else {
+        const targetLog = getSelectedLog();
+        if (targetLog) {
+          const jsonRes = parseJsonLog(targetLog.message);
+          const isExpanded = !!(jsonRes.isJson && (state.expandedLogIds[targetLog.id] || state.isWrapMode));
+          if (isExpanded && jsonRes.parsed) {
+            const prettyText = prettyPrintJson(targetLog.message);
+            copyToClipboard(prettyText);
+            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+            dispatch({ type: 'SHOW_TOAST', message: '✔ Copied formatted JSON to clipboard!' });
           } else {
-            const log = curSvc.logs?.[curSvc.logs.length - 1];
-            if (log) {
-              copyToClipboard(formatLogEntry(log, curSvc.name));
-              dispatch({ type: 'SHOW_TOAST', message: `✔ Copied log from "${curSvc.name}"` });
-            } else {
-              dispatch({ type: 'SHOW_TOAST', message: `ℹ No logs to copy for "${curSvc.name}"` });
-            }
+            const logText = formatLogEntry(targetLog, curSvc?.name);
+            copyToClipboard(logText);
+            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+            dispatch({ type: 'SHOW_TOAST', message: '✔ Copied selected log line to clipboard!' });
           }
-        }
-      } else if (state.activePanel === 'globalLogs') {
-        const log = state.globalLogs[state.globalLogs.length - 1];
-        if (log) {
-          copyToClipboard(formatLogEntry(log));
-          dispatch({ type: 'SHOW_TOAST', message: '✔ Copied latest global log' });
         } else {
-          dispatch({ type: 'SHOW_TOAST', message: 'ℹ No global logs to copy' });
+          dispatch({ type: 'SHOW_TOAST', message: 'ℹ No log selected to copy' });
         }
       }
       return;

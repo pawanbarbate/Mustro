@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme, getServiceBadgeStyle } from '../theme/theme.js';
+import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow } from '../utils/logFormatter.js';
 
 export interface GlobalLogsPanelProps {
   logs?: LogEntry[];
@@ -15,13 +16,20 @@ export interface GlobalLogsPanelProps {
   scrollOffset?: number;
   panelWidth?: number;
   height?: number;
+  isWrapMode?: boolean;
+  selectedLogIndex?: number;
+  expandedLogIds?: Record<string | number, boolean>;
+  copiedLogId?: string | number | null;
   onToggleSearch?: () => void;
   onCycleFilter?: () => void;
   onToggleLive?: () => void;
+  onToggleWrap?: () => void;
   onFocus?: () => void;
   onCopyCurrent?: () => void;
   onCopyLog?: (log: LogEntry) => void;
   onInspectLog?: (log: LogEntry) => void;
+  onSelectLogIndex?: (index: number) => void;
+  onToggleExpandLog?: (logId: string | number) => void;
 }
 
 export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({ 
@@ -35,26 +43,70 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   scrollOffset = 0,
   panelWidth = 53,
   height,
+  isWrapMode = false,
+  selectedLogIndex = 0,
+  expandedLogIds = {},
+  copiedLogId = null,
   onToggleSearch,
   onCycleFilter,
   onToggleLive,
+  onToggleWrap,
   onFocus,
   onCopyCurrent,
   onCopyLog,
-  onInspectLog
+  onInspectLog,
+  onSelectLogIndex,
+  onToggleExpandLog
 }) => {
   const isNarrow = panelWidth < 65;
   const innerWidth = Math.max(20, panelWidth - 4);
   const maxMsgLen = Math.max(12, innerWidth - 22);
 
-  const renderMessage = (log: LogEntry) => {
+  const renderMessage = (log: LogEntry, jsonResult?: JsonLogParseResult, isBadgeShown?: boolean) => {
     const rawMsg = log.message;
-    const msg = rawMsg.length > maxMsgLen ? rawMsg.slice(0, maxMsgLen - 1) + '…' : rawMsg;
+
+    // 1. Smart Structured JSON rendering
+    const res = jsonResult || parseJsonLog(rawMsg);
+    if (res.isJson) {
+      const isJsonErr = res.error || res.level?.toLowerCase() === 'error';
+      const isJsonWarn = res.level?.toLowerCase() === 'warn';
+      const msgColor = isJsonErr ? theme.colors.stopped : isJsonWarn ? theme.colors.warning : theme.colors.textPrimary;
+
+      const eventMsg = res.canonicalMsg || (res.extraPairs && res.extraPairs.length > 0
+        ? res.extraPairs.map(p => `${p.key}: ${p.val}`).join(' | ')
+        : (res.error || 'Structured payload'));
+
+      const displayMsg = isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg);
+
+      return (
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
+          {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
+          {res.method && (
+            <Text color={theme.colors.borderFocus} bold>{res.method} </Text>
+          )}
+          {res.path && (
+            <Text color={theme.colors.textPrimary}>{res.path} </Text>
+          )}
+          {res.status && (
+            <Text color={String(res.status).startsWith('2') ? theme.colors.running : theme.colors.stopped} bold>
+              [{res.status}] 
+            </Text>
+          )}
+          {res.latency && (
+            <Text color={theme.colors.textMuted}>({res.latency}) </Text>
+          )}
+          <Text color={msgColor}>{displayMsg}</Text>
+        </Text>
+      );
+    }
+
+    // 2. Standard log message rendering
+    const msg = isWrapMode ? rawMsg : (rawMsg.length > maxMsgLen ? rawMsg.slice(0, maxMsgLen - 1) + '…' : rawMsg);
 
     // Red error message with cross icon
     if (msg.includes('✖') || log.level === 'error' || log.level === 'ERROR') {
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.stopped} bold>✖ </Text>
           <Text color={theme.colors.stopped}>{msg.replace('✖', '').trim()}</Text>
         </Text>
@@ -63,7 +115,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
 
     // Retrying warning
     if (msg.includes('Retrying') || log.level === 'warn' || log.level === 'WARN') {
-      return <Text color={theme.colors.warning}>{msg}</Text>;
+      return <Text color={theme.colors.warning} wrap={isWrapMode ? 'wrap' : undefined}>{msg}</Text>;
     }
 
     // HTTP method and status (e.g. GET /api/auth/me  200  (12 ms))
@@ -72,7 +124,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
       const [, method, path, status, latency] = httpMatch;
       const statusCodeColor = (status || '').startsWith('2') ? theme.colors.running : theme.colors.stopped;
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.textPrimary}>{method} {path} </Text>
           <Text color={statusCodeColor} bold>{status} </Text>
           <Text color={theme.colors.textMuted}>{latency}</Text>
@@ -85,7 +137,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     if (latencyMatch) {
       const [, prefix, latency] = latencyMatch;
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.textPrimary}>{prefix} </Text>
           <Text color={theme.colors.textMuted}>{latency}</Text>
         </Text>
@@ -96,14 +148,14 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     if (msg.includes('http://')) {
       const [before, url] = msg.split('http://');
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.textPrimary}>{before}</Text>
           <Text color={theme.colors.accent} underline>http://{url}</Text>
         </Text>
       );
     }
 
-    return <Text color={theme.colors.textPrimary}>{msg}</Text>;
+    return <Text color={theme.colors.textPrimary} wrap={isWrapMode ? 'wrap' : undefined}>{msg}</Text>;
   };
 
   // Filter logs if filter or search active
@@ -118,12 +170,29 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     return true;
   });
 
-  const totalFiltered = matchingLogs.length;
-  const maxScroll = Math.max(0, totalFiltered - maxLogs);
-  const effectiveOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
-  const endIdx = totalFiltered - effectiveOffset;
-  const startIdx = Math.max(0, endIdx - maxLogs);
-  const visibleLogs = matchingLogs.slice(startIdx, endIdx);
+  const totalFilteredLogs = matchingLogs.length;
+
+  // Strict Line Budgeting:
+  // Overhead: Border top (1) + Border bottom (1) + Header (1) + Hairline (1) = 4 lines.
+  const overheadLines = 4;
+  const availableLogLines = Math.max(2, (height || 10) - overheadLines);
+
+  const {
+    visibleLogs,
+    startIdx,
+    endIdx,
+    totalLogs: totalFiltered,
+    effectiveOffset,
+    maxJsonLines
+  } = calculateVisibleLogWindow({
+    logs: matchingLogs,
+    availableLines: availableLogLines,
+    scrollOffset,
+    expandedLogIds,
+    isWrapMode
+  });
+
+  const safeSelectedIndex = Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
 
   return (
     <Clickable 
@@ -137,18 +206,31 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
       paddingY={0}
       width={panelWidth}
       height={height}
+      overflow="hidden"
       marginTop={0}
     >
-      {/* Header: Guaranteed 1 line with Boxed Controls */}
-      <Box flexDirection="row" justifyContent="space-between" alignItems="center" flexWrap="nowrap">
-        {/* Left Title */}
+      {/* Header: Guaranteed 1 line with Boxed Controls & Persistent Scroll Indicator */}
+      <Box 
+        flexDirection="row" 
+        justifyContent="space-between" 
+        alignItems="center" 
+        flexWrap="nowrap"
+        height={1}
+        flexShrink={0}
+        overflow="hidden"
+      >
+        {/* Left Title & Persistent Scroll Indicator */}
         <Box flexDirection="row" alignItems="center" flexShrink={0}>
           <Text color={isFocused ? theme.colors.accent : theme.colors.textSecondary} bold>GLOBAL LOGS </Text>
-          {!isNarrow && <Text color={theme.colors.textMuted}>({activeFilter}) </Text>}
+          {!isNarrow && <Text color={theme.colors.textMuted}>({activeFilter === 'All Services' ? 'All' : activeFilter}) </Text>}
           {effectiveOffset > 0 ? (
-            <Box backgroundColor={theme.colors.card} paddingX={1} flexShrink={0}>
-              <Text color={theme.colors.warning} bold>▲ (+{effectiveOffset}) [{startIdx + 1}-{endIdx}/{totalFiltered}]</Text>
-            </Box>
+            <Clickable onClick={() => onToggleLive?.()}>
+              <Box backgroundColor={theme.colors.card} paddingX={1} flexShrink={0}>
+                <Text color={theme.colors.warning} bold>
+                  ▲ +{effectiveOffset} [{startIdx + 1}-{endIdx}/{totalFiltered}]
+                </Text>
+              </Box>
+            </Clickable>
           ) : isFocused ? (
             <Box backgroundColor={theme.colors.card} paddingX={1} flexShrink={0}>
               <Text color={theme.colors.accent}>[↑↓ Scroll]</Text>
@@ -167,7 +249,9 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
               flexShrink={0}
             >
               <Text color={isSearching ? theme.colors.accent : theme.colors.textSecondary}>
-                [ 🔍 {isNarrow ? (searchQuery || '') : (searchQuery || 'Search...')} ]
+                {panelWidth < 68 
+                  ? (isSearching ? `[ 🔍 ${searchQuery || ''} ]` : '[ 🔍 ]') 
+                  : `[ 🔍 ${searchQuery || 'Search...'} ]`}
               </Text>
             </Box>
           </Clickable>
@@ -181,7 +265,9 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
               flexShrink={0}
             >
               <Text color={theme.colors.textSecondary}>
-                [ {isNarrow ? (activeFilter === 'All Services' ? 'All' : activeFilter) : activeFilter} ∨ ]
+                {panelWidth < 68 
+                  ? `[ ${activeFilter === 'All Services' ? 'All' : activeFilter.slice(0, 4)} ∨ ]` 
+                  : `[ ${activeFilter === 'All Services' ? 'All' : activeFilter} ∨ ]`}
               </Text>
             </Box>
           </Clickable>
@@ -203,6 +289,22 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
             </Box>
           </Clickable>
 
+          {/* Wrap mode pill */}
+          <Clickable onClick={() => onToggleWrap?.()}>
+            <Box 
+              backgroundColor={isWrapMode ? theme.colors.accentDark : theme.colors.card} 
+              paddingX={1}
+              marginRight={1}
+              flexShrink={0}
+            >
+              <Text color={isWrapMode ? theme.colors.accent : theme.colors.textSecondary} bold={isWrapMode}>
+                {panelWidth < 68 
+                  ? `[ ${isWrapMode ? 'W:On' : 'W:Off'} ]` 
+                  : `[ w: ${isWrapMode ? 'Wrap On' : 'Wrap Off'} ]`}
+              </Text>
+            </Box>
+          </Clickable>
+
           {/* Copy pill */}
           <Clickable onClick={() => onCopyCurrent?.()}>
             <Box 
@@ -211,7 +313,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
               flexShrink={0}
             >
               <Text color={theme.colors.accent} bold>
-                [ 📋 {isNarrow ? 'C' : 'Copy'} ]
+                {panelWidth < 68 ? '[ 📋 ]' : '[ 📋 Copy ]'}
               </Text>
             </Box>
           </Clickable>
@@ -219,37 +321,127 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
       </Box>
 
       {/* Hairline Separator under Header Controls */}
-      <Box width="100%" height={1} overflow="hidden">
+      <Box width="100%" height={1} overflow="hidden" flexShrink={0}>
         <Text color={theme.colors.borderSubtle}>{'─'.repeat(innerWidth)}</Text>
       </Box>
 
-      {/* Global Logs Stream */}
-      <Box flexDirection="column" marginTop={0}>
-        {visibleLogs.map((log) => {
+      {/* Global Logs Stream with Strict Line Budgeting & Overflow Containment */}
+      <Box 
+        flexDirection="column" 
+        height={availableLogLines} 
+        overflow="hidden" 
+        flexShrink={0}
+        marginTop={0}
+      >
+        {visibleLogs.map((log, index) => {
           const badge = getServiceBadgeStyle(log.service);
+          const isSelected = isFocused && safeSelectedIndex === index;
+          const isCopied = copiedLogId === log.id;
+          const jsonResult = parseJsonLog(log.message);
+          const isExpanded = !!(jsonResult.isJson && (
+            expandedLogIds[log.id] !== undefined
+              ? expandedLogIds[log.id]
+              : isWrapMode
+          ));
+
+          let highlightedLines: { tokens: any[] }[] = [];
+          if (isExpanded && jsonResult.parsed) {
+            const fullLines = formatJsonToHighlightedLines(jsonResult.parsed);
+            highlightedLines = fullLines.slice(0, maxJsonLines);
+            if (fullLines.length > maxJsonLines) {
+              highlightedLines.push({
+                tokens: [{ text: `  ... (+${fullLines.length - maxJsonLines} more lines)`, color: theme.colors.textMuted, dim: true }]
+              });
+            }
+          }
 
           return (
             <Clickable
               key={log.id}
               onClick={() => {
-                if (onInspectLog) onInspectLog(log);
-                else if (onCopyLog) onCopyLog(log);
+                onFocus?.();
+                onSelectLogIndex?.(index);
+                if (jsonResult.isJson) {
+                  onToggleExpandLog?.(log.id);
+                }
               }}
             >
-              <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap">
-                <Box width={9} flexShrink={0}>
-                  <Text color={theme.colors.textMuted}>{log.timestamp} </Text>
+              <Box
+                flexDirection="column"
+                backgroundColor={isSelected ? '#1E293B' : undefined}
+                paddingX={0}
+                marginBottom={0}
+              >
+                <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap">
+                  {/* Visual Selector Indicator */}
+                  <Box width={2} flexShrink={0}>
+                    {isSelected ? (
+                      <Text color={theme.colors.accent} bold>▶ </Text>
+                    ) : (
+                      <Text color={theme.colors.textDim}>  </Text>
+                    )}
+                  </Box>
+
+                  <Box width={9} flexShrink={0}>
+                    <Text color={theme.colors.textMuted}>{log.timestamp} </Text>
+                  </Box>
+
+                  <Box width={11} flexShrink={0} marginRight={1}>
+                    <Text color={theme.colors.textDim}>[</Text>
+                    <Text color={badge.color} bold>
+                      {badge.cleanLabel.padEnd(8)}
+                    </Text>
+                    <Text color={theme.colors.textDim}>] </Text>
+                  </Box>
+
+                  {/* Inline Expand Toggle for JSON */}
+                  {jsonResult.isJson && (
+                    <Clickable
+                      onClick={() => {
+                        onFocus?.();
+                        onSelectLogIndex?.(index);
+                        onToggleExpandLog?.(log.id);
+                      }}
+                    >
+                      <Box flexShrink={0} marginRight={1} backgroundColor={theme.colors.card} paddingX={1}>
+                        <Text color={theme.colors.accent} bold>
+                          {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
+                        </Text>
+                      </Box>
+                    </Clickable>
+                  )}
+
+                  <Box flexGrow={1} flexShrink={1}>
+                    {renderMessage(log, jsonResult, jsonResult.isJson)}
+                  </Box>
+
+                  {/* Inline Copy Confirmation Badge */}
+                  {isCopied && (
+                    <Box backgroundColor={theme.colors.runningBg} paddingX={1} flexShrink={0} marginLeft={1}>
+                      <Text color={theme.colors.running} bold>✔ COPIED</Text>
+                    </Box>
+                  )}
                 </Box>
-                <Box width={11} flexShrink={0} marginRight={1}>
-                  <Text color={theme.colors.textDim}>[</Text>
-                  <Text color={badge.color} bold>
-                    {badge.cleanLabel.padEnd(8)}
-                  </Text>
-                  <Text color={theme.colors.textDim}>] </Text>
-                </Box>
-                <Box flexGrow={1} flexShrink={1}>
-                  {renderMessage(log)}
-                </Box>
+
+                {/* Inline Expanded JSON View */}
+                {isExpanded && highlightedLines.length > 0 && (
+                  <Box flexDirection="column" paddingLeft={14} marginTop={0} marginBottom={0}>
+                    {highlightedLines.map((hl, hlIdx) => (
+                      <Box key={hlIdx} flexDirection="row">
+                        {hl.tokens.map((tok, tokIdx) => (
+                          <Text
+                            key={tokIdx}
+                            color={tok.color}
+                            bold={tok.bold}
+                            dimColor={tok.dim}
+                          >
+                            {tok.text}
+                          </Text>
+                        ))}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
               </Box>
             </Clickable>
           );
