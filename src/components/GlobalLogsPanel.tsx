@@ -176,6 +176,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   // Overhead: Border top (1) + Border bottom (1) + Header (1) + Hairline (1) = 4 lines.
   const overheadLines = 4;
   const availableLogLines = Math.max(2, (height || 10) - overheadLines);
+  const activeExpandedLogId = Object.keys(expandedLogIds).find(k => expandedLogIds[k]);
 
   const {
     visibleLogs,
@@ -189,7 +190,8 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     availableLines: availableLogLines,
     scrollOffset,
     expandedLogIds,
-    isWrapMode
+    isWrapMode,
+    anchorLogId: activeExpandedLogId || null
   });
 
   const safeSelectedIndex = Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
@@ -338,39 +340,44 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
           const isSelected = isFocused && safeSelectedIndex === index;
           const isCopied = copiedLogId === log.id;
           const jsonResult = parseJsonLog(log.message);
-          const isExpanded = !!(jsonResult.isJson && (
-            expandedLogIds[log.id] !== undefined
-              ? expandedLogIds[log.id]
-              : isWrapMode
-          ));
+          // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings
+          const isExpanded = !!(jsonResult.isJson && expandedLogIds[log.id]);
 
-          let highlightedLines: { tokens: any[] }[] = [];
-          if (isExpanded && jsonResult.parsed) {
+          let highlightedLines: { tokens: any[]; isClickableInspect?: boolean }[] = [];
+          if (isExpanded && jsonResult.parsed && maxJsonLines > 0) {
             const fullLines = formatJsonToHighlightedLines(jsonResult.parsed);
-            highlightedLines = fullLines.slice(0, maxJsonLines);
-            if (fullLines.length > maxJsonLines) {
+            if (fullLines.length <= maxJsonLines) {
+              highlightedLines = fullLines;
+            } else if (maxJsonLines === 1) {
+              highlightedLines = [{
+                tokens: [{ text: `  ... (+${fullLines.length} lines of JSON - click [ 🔍 View All ])`, color: theme.colors.accent, dim: false }],
+                isClickableInspect: true
+              }];
+            } else {
+              const previewLimit = maxJsonLines - 1;
+              highlightedLines = fullLines.slice(0, previewLimit);
+              const remaining = fullLines.length - previewLimit;
               highlightedLines.push({
-                tokens: [{ text: `  ... (+${fullLines.length - maxJsonLines} more lines)`, color: theme.colors.textMuted, dim: true }]
+                tokens: [{ text: `  ... (+${remaining} more lines - click [ 🔍 View All ] to inspect)`, color: theme.colors.accent, dim: false }],
+                isClickableInspect: true
               });
             }
           }
 
           return (
-            <Clickable
+            <Box
               key={log.id}
-              onClick={() => {
-                onFocus?.();
-                onSelectLogIndex?.(index);
-                if (jsonResult.isJson) {
-                  onToggleExpandLog?.(log.id);
-                }
-              }}
+              flexDirection="column"
+              backgroundColor={isSelected ? '#1E293B' : undefined}
+              paddingX={0}
+              marginBottom={0}
             >
-              <Box
-                flexDirection="column"
-                backgroundColor={isSelected ? '#1E293B' : undefined}
-                paddingX={0}
-                marginBottom={0}
+              {/* 1. Clickable Row Header: selects row & focuses panel */}
+              <Clickable
+                onClick={() => {
+                  onFocus?.();
+                  onSelectLogIndex?.(index);
+                }}
               >
                 <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap">
                   {/* Visual Selector Indicator */}
@@ -394,21 +401,38 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                     <Text color={theme.colors.textDim}>] </Text>
                   </Box>
 
-                  {/* Inline Expand Toggle for JSON */}
+                  {/* Inline Expand & Inspect Toggles for JSON */}
                   {jsonResult.isJson && (
-                    <Clickable
-                      onClick={() => {
-                        onFocus?.();
-                        onSelectLogIndex?.(index);
-                        onToggleExpandLog?.(log.id);
-                      }}
-                    >
-                      <Box flexShrink={0} marginRight={1} backgroundColor={theme.colors.card} paddingX={1}>
-                        <Text color={theme.colors.accent} bold>
-                          {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
-                        </Text>
-                      </Box>
-                    </Clickable>
+                    <Box flexDirection="row" alignItems="center" flexShrink={0} marginRight={1}>
+                      <Clickable
+                        onClick={() => {
+                          onFocus?.();
+                          onSelectLogIndex?.(index);
+                          onToggleExpandLog?.(log.id);
+                        }}
+                      >
+                        <Box flexShrink={0} marginRight={isExpanded && onInspectLog ? 1 : 0} backgroundColor={theme.colors.card} paddingX={1}>
+                          <Text color={theme.colors.accent} bold>
+                            {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
+                          </Text>
+                        </Box>
+                      </Clickable>
+                      {isExpanded && onInspectLog && (
+                        <Clickable
+                          onClick={() => {
+                            onFocus?.();
+                            onSelectLogIndex?.(index);
+                            onInspectLog(log);
+                          }}
+                        >
+                          <Box flexShrink={0} backgroundColor={theme.colors.accentDark} paddingX={1}>
+                            <Text color={theme.colors.accent} bold>
+                              [ 🔍 View All ]
+                            </Text>
+                          </Box>
+                        </Clickable>
+                      )}
+                    </Box>
                   )}
 
                   <Box flexGrow={1} flexShrink={1}>
@@ -422,11 +446,23 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                     </Box>
                   )}
                 </Box>
+              </Clickable>
 
-                {/* Inline Expanded JSON View */}
-                {isExpanded && highlightedLines.length > 0 && (
-                  <Box flexDirection="column" paddingLeft={14} marginTop={0} marginBottom={0}>
-                    {highlightedLines.map((hl, hlIdx) => (
+              {/* 2. Inline Expanded JSON View: Pure un-intercepted Box so mouse/trackpad selection highlight works! */}
+              {isExpanded && highlightedLines.length > 0 && (
+                <Box flexDirection="column" paddingLeft={14} marginTop={0} marginBottom={0}>
+                  {highlightedLines.map((hl, hlIdx) => (
+                    hl.isClickableInspect && onInspectLog ? (
+                      <Clickable key={hlIdx} onClick={() => onInspectLog(log)}>
+                        <Box flexDirection="row">
+                          {hl.tokens.map((tok, tokIdx) => (
+                            <Text key={tokIdx} color={tok.color} bold={tok.bold} underline>
+                              {tok.text}
+                            </Text>
+                          ))}
+                        </Box>
+                      </Clickable>
+                    ) : (
                       <Box key={hlIdx} flexDirection="row">
                         {hl.tokens.map((tok, tokIdx) => (
                           <Text
@@ -439,11 +475,11 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                           </Text>
                         ))}
                       </Box>
-                    ))}
-                  </Box>
-                )}
-              </Box>
-            </Clickable>
+                    )
+                  ))}
+                </Box>
+              )}
+            </Box>
           );
         })}
       </Box>

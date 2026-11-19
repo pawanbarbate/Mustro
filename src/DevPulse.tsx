@@ -6,6 +6,7 @@ import ServiceDetailPanel from './components/ServiceDetailPanel.js';
 import GlobalLogsPanel from './components/GlobalLogsPanel.js';
 import Footer from './components/Footer.js';
 import HelpModal from './components/HelpModal.js';
+import LogInspectorModal from './components/common/LogInspectorModal.js';
 import { createInitialDashboardState, dashboardReducer } from './state/dashboardReducer.js';
 import { useTerminalViewport } from './hooks/useTerminalViewport.js';
 import { useTerminalInput } from './hooks/useTerminalInput.js';
@@ -20,7 +21,7 @@ import {
   formatServiceErrorSummary,
   formatAllErrors
 } from './utils/clipboard.js';
-import { prettyPrintJson, parseJsonLog } from './utils/logFormatter.js';
+import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines } from './utils/logFormatter.js';
 
 export interface DevPulseProps {
   config?: DevPulseConfig;
@@ -132,7 +133,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
   const handleCopyCurrent = () => {
     if (state.activeTab === 'errors' && selectedService) {
       const errs = selectedService.errorLogs || [];
-      const err = errs[state.selectedLogIndex] || errs[errs.length - 1];
+      const err = errs[state.serviceSelectedLogIndex] || errs[errs.length - 1];
       if (err) {
         copyToClipboard(err.message);
         dispatch({ type: 'SET_COPIED_FLASH', logId: err.id });
@@ -145,10 +146,10 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
       }
     } else if (selectedService) {
       const logs = selectedService.logs || [];
-      const log = logs[state.selectedLogIndex] || logs[logs.length - 1];
+      const log = logs[state.serviceSelectedLogIndex] || logs[logs.length - 1];
       if (log) {
         const jsonRes = parseJsonLog(log.message);
-        const isExpanded = !!(jsonRes.isJson && (state.expandedLogIds[log.id] || state.isWrapMode));
+        const isExpanded = !!(jsonRes.isJson && (state.serviceExpandedLogIds[log.id] || state.isWrapMode));
         if (isExpanded && jsonRes.parsed) {
           copyToClipboard(prettyPrintJson(log.message));
           dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
@@ -173,14 +174,14 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
   };
 
   const handleInspectLog = (log: LogEntry) => {
-    dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId: log.id });
+    dispatch({ type: 'OPEN_LOG_INSPECTOR', log });
   };
 
   const handleCopyGlobalCurrent = () => {
-    const log = state.globalLogs[state.selectedLogIndex] || state.globalLogs[state.globalLogs.length - 1];
+    const log = state.globalLogs[state.globalSelectedLogIndex] || state.globalLogs[state.globalLogs.length - 1];
     if (log) {
       const jsonRes = parseJsonLog(log.message);
-      const isExpanded = !!(jsonRes.isJson && (state.expandedLogIds[log.id] || state.isWrapMode));
+      const isExpanded = !!(jsonRes.isJson && (state.globalExpandedLogIds[log.id] || state.isWrapMode));
       if (isExpanded && jsonRes.parsed) {
         copyToClipboard(prettyPrintJson(log.message));
         dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
@@ -261,8 +262,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 panelWidth={viewport.width}
                 height={viewport.contentHeight - 1}
                 isWrapMode={state.isWrapMode}
-                selectedLogIndex={state.selectedLogIndex}
-                expandedLogIds={state.expandedLogIds}
+                selectedLogIndex={state.serviceSelectedLogIndex}
+                expandedLogIds={state.serviceExpandedLogIds}
                 copiedLogId={state.copiedLogId}
                 onRestart={() => handleRestart(state.selectedIndex)}
                 onToggleStop={() => handleToggleStop(state.selectedIndex)}
@@ -272,8 +273,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
               />
             )}
             {state.narrowTab === 'logs' && (
@@ -289,8 +290,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 panelWidth={viewport.width}
                 height={viewport.contentHeight - 1}
                 isWrapMode={state.isWrapMode}
-                selectedLogIndex={state.selectedLogIndex}
-                expandedLogIds={state.expandedLogIds}
+                selectedLogIndex={state.globalSelectedLogIndex}
+                expandedLogIds={state.globalExpandedLogIds}
                 copiedLogId={state.copiedLogId}
                 onToggleSearch={() => dispatch({ type: 'SET_SEARCHING', isSearching: !state.isSearching })}
                 onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
@@ -300,8 +301,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
               />
             )}
           </Box>
@@ -323,7 +324,14 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
             </Box>
 
             {/* Right Column (Service Detail & Global Logs) */}
-            <Box flexDirection="column" width={viewport.rightPanelWidth} height={viewport.contentHeight} backgroundColor={theme.colors.canvas}>
+            <Box 
+              flexDirection="column" 
+              width={viewport.rightPanelWidth} 
+              height={viewport.contentHeight} 
+              overflow="hidden"
+              flexShrink={0}
+              backgroundColor={theme.colors.canvas}
+            >
               <ServiceDetailPanel 
                 service={selectedService} 
                 activeTab={state.activeTab}
@@ -335,8 +343,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.detailPanelHeight}
                 isUltraCompact={viewport.isUltraCompactHeight}
                 isWrapMode={state.isWrapMode}
-                selectedLogIndex={state.selectedLogIndex}
-                expandedLogIds={state.expandedLogIds}
+                selectedLogIndex={state.serviceSelectedLogIndex}
+                expandedLogIds={state.serviceExpandedLogIds}
                 copiedLogId={state.copiedLogId}
                 onRestart={() => handleRestart(state.selectedIndex)}
                 onToggleStop={() => handleToggleStop(state.selectedIndex)}
@@ -346,8 +354,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
               />
               <GlobalLogsPanel 
                 logs={state.globalLogs}
@@ -361,8 +369,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 panelWidth={viewport.rightPanelWidth}
                 height={viewport.globalLogsPanelHeight}
                 isWrapMode={state.isWrapMode}
-                selectedLogIndex={state.selectedLogIndex}
-                expandedLogIds={state.expandedLogIds}
+                selectedLogIndex={state.globalSelectedLogIndex}
+                expandedLogIds={state.globalExpandedLogIds}
                 copiedLogId={state.copiedLogId}
                 onToggleSearch={() => dispatch({ type: 'SET_SEARCHING', isSearching: !state.isSearching })}
                 onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
@@ -372,8 +380,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
                 onInspectLog={handleInspectLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index })}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId })}
+                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' })}
+                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
               />
             </Box>
           </Box>
@@ -401,6 +409,49 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
           >
             <HelpModal 
               onClose={() => dispatch({ type: 'TOGGLE_HELP', show: false })} 
+              width={viewport.width}
+              height={viewport.height}
+            />
+          </Box>
+        )}
+
+        {/* 5. Optional Log & Error Inspector Modal */}
+        {state.inspectingLog && (
+          <Box 
+            position="absolute" 
+            width={viewport.width} 
+            height={viewport.height} 
+            alignItems="center" 
+            justifyContent="center"
+          >
+            <LogInspectorModal 
+              log={state.inspectingLog}
+              serviceName={state.inspectingLog.service || selectedService?.name}
+              activeTab={state.inspectorTab}
+              scrollOffset={state.inspectorScrollOffset}
+              onSelectTab={(tab) => dispatch({ type: 'SET_INSPECTOR_TAB', tab })}
+              onScroll={(delta) => {
+                const isJson = parseJsonLog(state.inspectingLog!.message).isJson;
+                let totalLines = 0;
+                try {
+                  totalLines = isJson && state.inspectorTab === 'formatted'
+                    ? formatJsonToHighlightedLines(JSON.parse(state.inspectingLog!.message)).length
+                    : state.inspectingLog!.message.split(/\r?\n/).length;
+                } catch {
+                  totalLines = state.inspectingLog!.message.split(/\r?\n/).length;
+                }
+                const maxVisible = Math.max(6, (viewport.height || 24) - 12);
+                dispatch({ type: 'SCROLL_INSPECTOR', delta, maxScroll: Math.max(0, totalLines - maxVisible) });
+              }}
+              onClose={() => dispatch({ type: 'CLOSE_LOG_INSPECTOR' })}
+              onCopyFormatted={() => {
+                copyToClipboard(prettyPrintJson(state.inspectingLog!.message));
+                dispatch({ type: 'SHOW_TOAST', message: '✔ Copied formatted JSON to clipboard!' });
+              }}
+              onCopyRaw={() => {
+                copyToClipboard(state.inspectingLog!.raw || state.inspectingLog!.message);
+                dispatch({ type: 'SHOW_TOAST', message: '✔ Copied raw log to clipboard!' });
+              }}
               width={viewport.width}
               height={viewport.height}
             />

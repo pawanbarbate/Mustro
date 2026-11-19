@@ -42,7 +42,7 @@ async function runInlineLogSelectorTests() {
   assert.strictEqual(state.expandedLogIds[testLogId], true, 'Expansion state should be true after toggle');
 
   state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: testLogId });
-  assert.strictEqual(state.expandedLogIds[testLogId], false, 'Expansion state should toggle back to false');
+  assert.strictEqual(!!state.expandedLogIds[testLogId], false, 'Expansion state should toggle back to false');
   console.log('✔ TOGGLE_LOG_EXPANSION toggles inline expand state');
 
   // Test 4: TOGGLE_MOUSE_MODE
@@ -109,25 +109,22 @@ async function runInlineLogSelectorTests() {
   assert.strictEqual(state.selectedLogIndex, 0, 'selectedLogIndex must reset to 0 on service change');
   console.log('✔ selectedLogIndex properly resets on context changes');
 
-  // Test 8: Shrinking an expanded JSON log under wrap mode
-  console.log('\n[Test 8] Testing JSON shrink / collapse when wrap mode is active...');
+  // Test 8: Wrap mode decoupling from JSON expansion
+  console.log('\n[Test 8] Testing Wrap Mode decoupling (wrap mode does not auto-expand JSON)...');
   state = { ...state, isWrapMode: true, expandedLogIds: {} };
   const wrapLogId = 'wrap-log-99';
   
-  // Initially under wrap mode, log is visually expanded because isWrapMode=true
-  const isExpInitially = state.expandedLogIds[wrapLogId] !== undefined ? state.expandedLogIds[wrapLogId] : state.isWrapMode;
-  assert.strictEqual(isExpInitially, true, 'Should be expanded when wrap mode is active');
+  // Under wrap mode, log is NOT auto-expanded
+  assert.strictEqual(!!state.expandedLogIds[wrapLogId], false, 'Wrap mode must NOT auto-expand JSON logs');
 
-  // User clicks or presses Enter to collapse/shrink it
+  // Explicit expansion expands the log
   state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: wrapLogId });
-  const isExpAfterCollapse = state.expandedLogIds[wrapLogId] !== undefined ? state.expandedLogIds[wrapLogId] : state.isWrapMode;
-  assert.strictEqual(isExpAfterCollapse, false, 'Should shrink/collapse even when wrap mode is active');
+  assert.strictEqual(!!state.expandedLogIds[wrapLogId], true, 'Explicit toggle should expand the log');
 
-  // User clicks again to re-expand it
+  // Explicit collapse shrinks it
   state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: wrapLogId });
-  const isExpAfterReexpand = state.expandedLogIds[wrapLogId] !== undefined ? state.expandedLogIds[wrapLogId] : state.isWrapMode;
-  assert.strictEqual(isExpAfterReexpand, true, 'Should re-expand after clicking again');
-  console.log('✔ Shrink and re-expand under wrap mode verified');
+  assert.strictEqual(!!state.expandedLogIds[wrapLogId], false, 'Explicit toggle should collapse the log');
+  console.log('✔ Wrap mode properly decoupled from JSON expansion');
 
   // Test 9: Line-budgeted windowing with standard collapsed logs
   console.log('\n[Test 9] Testing calculateVisibleLogWindow with collapsed logs...');
@@ -152,7 +149,7 @@ async function runInlineLogSelectorTests() {
   assert.strictEqual(standardWindow.endIdx, 20, 'End index should be 20');
   console.log('✔ Standard collapsed window accurately slices 6 lines');
 
-  // Test 10: Line-budgeted windowing with expanded JSON log (zero vertical overflow)
+  // Test 10: Line-budgeted windowing with expanded JSON log (zero vertical overflow, preserves surrounding logs)
   console.log('\n[Test 10] Testing calculateVisibleLogWindow with expanded JSON log...');
   const expandedWindow = calculateVisibleLogWindow({
     logs: sampleLogs,
@@ -162,11 +159,11 @@ async function runInlineLogSelectorTests() {
     anchorLogId: 'log-10'
   });
 
-  // Log 10 is JSON and takes 1 (header) + maxJsonLines (4) = 5 lines.
-  // With 6 lines available, it can only fit log 10 (5 lines) + 1 adjacent log (1 line) = 6 lines!
+  // Log 10 is JSON and takes 1 (header) + maxJsonLines (2) = 3 lines max (<= 55% of 6 lines).
+  // With 6 lines available, it fits log 10 (3 lines) + 3 surrounding logs (3 lines) = 6 lines total!
   assert.ok(expandedWindow.visibleLogs.some(l => l.id === 'log-10'), 'Expanded log-10 must be included');
-  assert.ok(expandedWindow.visibleLogs.length <= 2, 'Should reduce visible log count so total lines <= availableLines');
-  console.log(`✔ Expanded JSON reduced visible logs count to ${expandedWindow.visibleLogs.length} to preserve line budget`);
+  assert.ok(expandedWindow.visibleLogs.length >= 3, 'Must preserve surrounding logs alongside expanded log');
+  console.log(`✔ Expanded JSON maintained ${expandedWindow.visibleLogs.length} visible logs within 6-line budget without evicting surrounding logs`);
 
   // Test 11: Total rendered footprint strictly <= availableLines under all scenarios
   console.log('\n[Test 11] Verifying total rendered line footprint never exceeds availableLines...');
@@ -185,7 +182,7 @@ async function runInlineLogSelectorTests() {
       if (l.id === 'log-10') {
         const parsed = parseJsonLog(l.message);
         const fullLines = formatJsonToHighlightedLines(parsed.parsed);
-        const expLines = Math.min(fullLines.length, res.maxJsonLines) + (fullLines.length > res.maxJsonLines ? 1 : 0);
+        const expLines = Math.min(fullLines.length, res.maxJsonLines);
         totalLinesSum += 1 + expLines;
       } else {
         totalLinesSum += 1;
@@ -210,7 +207,161 @@ async function runInlineLogSelectorTests() {
   assert.ok(scrolledWindow.endIdx <= sampleLogs.length, 'endIdx must not exceed totalLogs');
   console.log('✔ Scrolled offset and index bounds successfully verified');
 
-  console.log('\n=== ALL INLINE LOG SELECTOR & EXPANSION TESTS PASSED (12/12) ===');
+  // Test 13: Panel-specific expansion isolation (service vs global)
+  console.log('\n[Test 13] Testing panel-specific expansion isolation in reducer...');
+  state = { ...initialDashboardState, activePanel: 'serviceLogs' };
+  const targetId = 'svc-log-special';
+
+  // Toggle in service logs
+  state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: targetId, panel: 'service' });
+  assert.strictEqual(state.serviceExpandedLogIds[targetId], true, 'Must expand in serviceExpandedLogIds');
+  assert.strictEqual(!!state.globalExpandedLogIds[targetId], false, 'Must NOT expand in globalExpandedLogIds');
+
+  // Toggle in global logs
+  const globalTargetId = 'global-log-special';
+  state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: globalTargetId, panel: 'global' });
+  assert.strictEqual(state.globalExpandedLogIds[globalTargetId], true, 'Must expand in globalExpandedLogIds');
+  assert.strictEqual(!!state.serviceExpandedLogIds[globalTargetId], false, 'Must NOT expand in serviceExpandedLogIds');
+  console.log('✔ Expansion state strictly isolated between service logs and global logs');
+
+  // Test 14: Expanding an older log never hides newer logs in live tail mode
+  console.log('\n[Test 14] Verifying expanding a log never cuts off live tail or newer logs...');
+  const mixedServiceLogs: LogEntry[] = [
+    { id: 'auth-1', timestamp: '10:00:01', service: 'auth', level: 'info', message: JSON.stringify({ route: '/login', ok: true }) },
+    { id: 'billing-1', timestamp: '10:00:02', service: 'billing', level: 'info', message: 'Invoice generated' },
+    { id: 'payment-1', timestamp: '10:00:03', service: 'payment', level: 'info', message: 'Payment processed' },
+    { id: 'gateway-1', timestamp: '10:00:04', service: 'gateway', level: 'info', message: 'Route proxy 200' },
+  ];
+
+  // In live tail mode (scrollOffset = 0)
+  const tailWindow = calculateVisibleLogWindow({
+    logs: mixedServiceLogs,
+    availableLines: 6,
+    scrollOffset: 0,
+    expandedLogIds: { 'auth-1': true }
+  });
+
+  // Latest log (gateway-1) MUST be included
+  assert.ok(tailWindow.visibleLogs.some(l => l.id === 'gateway-1'), 'Latest log gateway-1 must be visible in live tail');
+  assert.strictEqual(tailWindow.endIdx, mixedServiceLogs.length, 'End index must reach totalLogs in live tail');
+  console.log('✔ Live tail preserves the latest service logs even with prior expanded logs');
+
+  // Test 15: Rich syntax highlighting line budget minimum
+  console.log('\n[Test 15] Verifying maxJsonLines proportional budget...');
+  for (let b = 3; b <= 10; b++) {
+    const res = calculateVisibleLogWindow({
+      logs: sampleLogs,
+      availableLines: b,
+      scrollOffset: 0
+    });
+    assert.ok(res.maxJsonLines >= 2, `maxJsonLines (${res.maxJsonLines}) must be >= 2 when budget is ${b}`);
+  }
+  console.log('✔ maxJsonLines guaranteed >= 2 lines for rich syntax highlighting');
+
+  // Test 16: Decoupled Panel Selection Cursors
+  console.log('\n[Test 16] Testing independent serviceSelectedLogIndex and globalSelectedLogIndex...');
+  let decoupledState = { ...initialDashboardState };
+  assert.strictEqual(decoupledState.serviceSelectedLogIndex, 0);
+  assert.strictEqual(decoupledState.globalSelectedLogIndex, 0);
+
+  // Select row in globalLogs
+  decoupledState = dashboardReducer(decoupledState, { type: 'SELECT_LOG_ROW', index: 4, panel: 'global' });
+  assert.strictEqual(decoupledState.globalSelectedLogIndex, 4, 'globalSelectedLogIndex should be 4');
+  assert.strictEqual(decoupledState.serviceSelectedLogIndex, 0, 'serviceSelectedLogIndex should remain 0');
+
+  // Navigate selection in serviceLogs
+  decoupledState = dashboardReducer(decoupledState, { type: 'NAVIGATE_LOG_SELECTION', delta: 2, maxIndex: 10, panel: 'service' });
+  assert.strictEqual(decoupledState.serviceSelectedLogIndex, 2, 'serviceSelectedLogIndex should be 2');
+  assert.strictEqual(decoupledState.globalSelectedLogIndex, 4, 'globalSelectedLogIndex should still be 4');
+  console.log('✔ Service and Global panel selection indices are strictly decoupled');
+
+  // Test 17: Proportional Line Budget Guarantee for GlobalLogsPanel
+  console.log('\n[Test 17] Verifying GlobalLogsPanel 6-line budget with expanded JSON...');
+  const globalTestLogs: LogEntry[] = [
+    { id: 'g-1', timestamp: '11:00:01', service: 'auth', level: 'info', message: 'User signed in' },
+    { id: 'g-2', timestamp: '11:00:02', service: 'billing', level: 'info', message: 'Invoice generated' },
+    { id: 'g-3', timestamp: '11:00:03', service: 'gateway', level: 'info', message: 'Proxy request dispatched' },
+    { id: 'g-4', timestamp: '11:00:04', service: 'notif', level: 'info', message: JSON.stringify({ invoice: 'INV-100', amount: 99.99, paid: true, currency: 'USD' }) },
+    { id: 'g-5', timestamp: '11:00:05', service: 'auth', level: 'info', message: 'Token refreshed' },
+    { id: 'g-6', timestamp: '11:00:06', service: 'worker', level: 'info', message: 'Background queue processed' },
+  ];
+
+  const globalWindow = calculateVisibleLogWindow({
+    logs: globalTestLogs,
+    availableLines: 6,
+    scrollOffset: 0,
+    expandedLogIds: { 'g-4': true }
+  });
+
+  // Calculate rendered line footprint of globalWindow
+  let renderedLines = 0;
+  for (const log of globalWindow.visibleLogs) {
+    if (log.id === 'g-4') {
+      const parsed = parseJsonLog(log.message);
+      const fullLines = formatJsonToHighlightedLines(parsed.parsed);
+      const expLines = Math.min(fullLines.length, globalWindow.maxJsonLines);
+      renderedLines += 1 + expLines;
+    } else {
+      renderedLines += 1;
+    }
+  }
+
+  assert.ok(renderedLines <= 6, `Total rendered lines (${renderedLines}) must not exceed available 6-line budget`);
+  assert.ok(globalWindow.visibleLogs.length >= 3, `Must show at least 3 logs (showed ${globalWindow.visibleLogs.length})`);
+  assert.ok(globalWindow.visibleLogs.some(l => l.id === 'g-4'), 'Expanded JSON log g-4 must be visible');
+  console.log(`✔ Global Logs expansion fits within 6 lines (${renderedLines}/6 lines used, ${globalWindow.visibleLogs.length} logs visible)`);
+
+  // Test 18: Global Logs Accordion Mode (only 1 expanded log at a time to protect all services)
+  console.log('\n[Test 18] Testing Global Logs Accordion Mode...');
+  let accordionState = { ...initialDashboardState, activePanel: 'globalLogs' as const };
+  accordionState = dashboardReducer(accordionState, { type: 'TOGGLE_LOG_EXPANSION', logId: 'log-A', panel: 'global' });
+  assert.strictEqual(accordionState.globalExpandedLogIds['log-A'], true);
+  assert.strictEqual(Object.keys(accordionState.globalExpandedLogIds).length, 1);
+
+  // Expanding log-B must automatically collapse log-A in global logs
+  accordionState = dashboardReducer(accordionState, { type: 'TOGGLE_LOG_EXPANSION', logId: 'log-B', panel: 'global' });
+  assert.strictEqual(accordionState.globalExpandedLogIds['log-B'], true);
+  assert.strictEqual(accordionState.globalExpandedLogIds['log-A'], undefined);
+  assert.strictEqual(Object.keys(accordionState.globalExpandedLogIds).length, 1);
+  console.log('✔ Accordion mode guarantees exactly 1 expanded log at a time in Global Logs');
+
+  // Test 19: Scaled inline JSON expansion in tall viewports (e.g. 190x45 terminal)
+  console.log('\n[Test 19] Testing scaled inline JSON expansion in tall viewports...');
+  const tallWindow = calculateVisibleLogWindow({
+    logs: sampleLogs,
+    availableLines: 17, // 45-line terminal globalLogs available height
+    scrollOffset: 0,
+    expandedLogIds: { 'log-10': true },
+    anchorLogId: 'log-10'
+  });
+  // In a 17-line budget, maxJsonLines scales up to Math.min(10, Math.floor(17 * 0.55)) - 1 = 9 - 1 = 8 lines
+  assert.ok(tallWindow.maxJsonLines >= 8, `maxJsonLines (${tallWindow.maxJsonLines}) should scale up to >= 8 in tall viewports`);
+  console.log(`✔ Tall viewports provide generous maxJsonLines (${tallWindow.maxJsonLines}) allowing standard JSON to fit inline without truncation`);
+
+  // Test 20: Full JSON Inspector Modal State
+  console.log('\n[Test 20] Testing LogInspectorModal state actions...');
+  let inspectorState = { ...initialDashboardState };
+  const testInspectLog: LogEntry = {
+    id: 'inspect-1',
+    timestamp: '12:00:00',
+    service: 'gateway',
+    level: 'info',
+    message: JSON.stringify({ route: '/api/v1/users', status: 200, latencyMs: 14.5 })
+  };
+
+  inspectorState = dashboardReducer(inspectorState, { type: 'OPEN_LOG_INSPECTOR', log: testInspectLog });
+  assert.strictEqual(inspectorState.inspectingLog?.id, 'inspect-1', 'inspectingLog should be set');
+  assert.strictEqual(inspectorState.inspectorTab, 'formatted');
+  assert.strictEqual(inspectorState.inspectorScrollOffset, 0);
+
+  inspectorState = dashboardReducer(inspectorState, { type: 'SET_INSPECTOR_TAB', tab: 'raw' });
+  assert.strictEqual(inspectorState.inspectorTab, 'raw');
+
+  inspectorState = dashboardReducer(inspectorState, { type: 'CLOSE_LOG_INSPECTOR' });
+  assert.strictEqual(inspectorState.inspectingLog, null, 'inspectingLog should be null after close');
+  console.log('✔ Full LogInspectorModal actions verified');
+
+  console.log('\n=== ALL INLINE LOG SELECTOR & EXPANSION TESTS PASSED (20/20) ===');
 }
 
 runInlineLogSelectorTests().catch((err) => {

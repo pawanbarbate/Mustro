@@ -72,6 +72,15 @@ export const Footer: React.FC<FooterProps> = React.memo(({
         </Box>
         <Text color={theme.colors.textSecondary}>Copy </Text>
 
+        {activePanel !== 'services' && !isNarrow && (
+          <>
+            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+              <Text color={theme.colors.accent} bold>i</Text>
+            </Box>
+            <Text color={theme.colors.textSecondary}>Inspect </Text>
+          </>
+        )}
+
         <Clickable onClick={() => onToggleMouseMode?.()} flexDirection="row">
           <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
             <Text color={theme.colors.accent} bold>m</Text>

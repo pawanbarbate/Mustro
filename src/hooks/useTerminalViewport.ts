@@ -55,8 +55,8 @@ export function useTerminalViewport(overrideWidth?: number, overrideHeight?: num
   const systemPanelHeight = isUltraCompactHeight ? 3 : 8;
   const servicesPanelHeight = Math.max(4, contentHeight - systemPanelHeight - 1);
 
-  // Right Column: Detail ~48%, Global Logs remainder (accounting for 1-row marginBottom)
-  const detailPanelHeight = isUltraCompactHeight ? 5 : Math.max(6, Math.floor(contentHeight * 0.48));
+  // Right Column: Detail ~50%, Global Logs remainder (accounting for 1-row marginBottom)
+  const detailPanelHeight = isUltraCompactHeight ? 5 : Math.max(7, Math.floor(contentHeight * 0.50));
   const globalLogsPanelHeight = Math.max(5, contentHeight - detailPanelHeight - 1);
 
   // Logs calculation

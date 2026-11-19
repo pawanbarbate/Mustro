@@ -58,11 +58,16 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Assert SGR mouse reporting mode on mount
+  // Assert SGR mouse reporting mode on mount and restore native on unmount
   useEffect(() => {
     try {
       process.stdout.write('\x1b[?1000h\x1b[?1006h');
     } catch {}
+    return () => {
+      try {
+        process.stdout.write('\x1b[?1000l\x1b[?1006l');
+      } catch {}
+    };
   }, []);
 
   const [selectedIndex, setSelectedIndex] = useState(0);

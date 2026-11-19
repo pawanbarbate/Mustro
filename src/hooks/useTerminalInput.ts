@@ -435,7 +435,10 @@ export function useTerminalInput({
 
     const getSelectedLog = (): LogEntry | null => {
       const visible = getVisibleLogsSlice();
-      return visible[state.selectedLogIndex] || visible[visible.length - 1] || null;
+      const currentIdx = state.activePanel === 'globalLogs'
+        ? state.globalSelectedLogIndex
+        : state.serviceSelectedLogIndex;
+      return visible[currentIdx] || visible[visible.length - 1] || null;
     };
 
     // Arrow Up / Down or j / k behavior - Instant response, cursor tracking and smooth scrolling
@@ -443,14 +446,14 @@ export function useTerminalInput({
       if (state.activePanel === 'services') {
         dispatch({ type: 'NAVIGATE_SERVICES', delta: -1 });
       } else if (state.activePanel === 'serviceLogs') {
-        if (state.selectedLogIndex > 0) {
-          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex - 1 });
+        if (state.serviceSelectedLogIndex > 0) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.serviceSelectedLogIndex - 1, panel: 'service' });
         } else {
           dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll: getServiceMaxScroll() });
         }
       } else if (state.activePanel === 'globalLogs') {
-        if (state.selectedLogIndex > 0) {
-          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex - 1 });
+        if (state.globalSelectedLogIndex > 0) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.globalSelectedLogIndex - 1, panel: 'global' });
         } else {
           dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 1, maxScroll: getGlobalMaxScroll() });
         }
@@ -464,16 +467,16 @@ export function useTerminalInput({
       } else if (state.activePanel === 'serviceLogs') {
         const visible = getVisibleLogsSlice();
         const maxIdx = Math.max(0, visible.length - 1);
-        if (state.selectedLogIndex < maxIdx) {
-          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex + 1 });
+        if (state.serviceSelectedLogIndex < maxIdx) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.serviceSelectedLogIndex + 1, panel: 'service' });
         } else {
           dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -1, maxScroll: getServiceMaxScroll() });
         }
       } else if (state.activePanel === 'globalLogs') {
         const visible = getVisibleLogsSlice();
         const maxIdx = Math.max(0, visible.length - 1);
-        if (state.selectedLogIndex < maxIdx) {
-          dispatch({ type: 'SELECT_LOG_ROW', index: state.selectedLogIndex + 1 });
+        if (state.globalSelectedLogIndex < maxIdx) {
+          dispatch({ type: 'SELECT_LOG_ROW', index: state.globalSelectedLogIndex + 1, panel: 'global' });
         } else {
           dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -1, maxScroll: getGlobalMaxScroll() });
         }
@@ -579,6 +582,17 @@ export function useTerminalInput({
       return;
     }
 
+    // Inspect full log in LogInspectorModal (i or I)
+    if (input === 'i' || input === 'I') {
+      if (state.activePanel === 'serviceLogs' || state.activePanel === 'globalLogs') {
+        const targetLog = getSelectedLog();
+        if (targetLog) {
+          dispatch({ type: 'OPEN_LOG_INSPECTOR', log: targetLog });
+          return;
+        }
+      }
+    }
+
     // Inline Expand / Collapse JSON (Enter, Space, or v)
     if (key.return || input === 'v' || input === 'V' || input === ' ') {
       if (state.activePanel === 'serviceLogs' || state.activePanel === 'globalLogs') {
@@ -586,7 +600,11 @@ export function useTerminalInput({
         if (targetLog) {
           const jsonRes = parseJsonLog(targetLog.message);
           if (jsonRes.isJson) {
-            dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId: targetLog.id });
+            dispatch({ 
+              type: 'TOGGLE_LOG_EXPANSION', 
+              logId: targetLog.id, 
+              panel: state.activePanel === 'serviceLogs' ? 'service' : 'global' 
+            });
             return;
           }
         }

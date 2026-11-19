@@ -51,7 +51,11 @@ export interface DashboardState {
   inspectorScrollOffset: number;
   inspectorTab: 'formatted' | 'raw';
   selectedLogIndex: number;
+  serviceSelectedLogIndex: number;
+  globalSelectedLogIndex: number;
   expandedLogIds: Record<string | number, boolean>;
+  serviceExpandedLogIds: Record<string | number, boolean>;
+  globalExpandedLogIds: Record<string | number, boolean>;
   mouseMode: 'interactive' | 'native';
   copiedLogId: string | number | null;
 }
@@ -81,7 +85,11 @@ export const initialDashboardState: DashboardState = {
   inspectorScrollOffset: 0,
   inspectorTab: 'formatted',
   selectedLogIndex: 0,
+  serviceSelectedLogIndex: 0,
+  globalSelectedLogIndex: 0,
   expandedLogIds: {},
+  serviceExpandedLogIds: {},
+  globalExpandedLogIds: {},
   mouseMode: 'native',
   copiedLogId: null
 };
@@ -169,9 +177,9 @@ export type DashboardAction =
   | { type: 'TOGGLE_WRAP_MODE' }
   | { type: 'SCROLL_INSPECTOR'; delta: number; maxScroll: number }
   | { type: 'SET_INSPECTOR_TAB'; tab: 'formatted' | 'raw' }
-  | { type: 'SELECT_LOG_ROW'; index: number }
-  | { type: 'NAVIGATE_LOG_SELECTION'; delta: number; maxIndex: number }
-  | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number }
+  | { type: 'SELECT_LOG_ROW'; index: number; panel?: 'service' | 'global' }
+  | { type: 'NAVIGATE_LOG_SELECTION'; delta: number; maxIndex: number; panel?: 'service' | 'global' }
+  | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global' }
   | { type: 'TOGGLE_ALL_JSON_EXPANSION'; forceState?: boolean }
   | { type: 'TOGGLE_MOUSE_MODE' }
   | { type: 'SET_COPIED_FLASH'; logId: string | number | null };
@@ -185,7 +193,9 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         selectedIndex: clamped,
         activePanel: 'services',
         serviceLogScroll: 0,
-        selectedLogIndex: 0
+        selectedLogIndex: 0,
+        serviceSelectedLogIndex: 0,
+        serviceExpandedLogIds: {}
       };
     }
 
@@ -196,15 +206,16 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         selectedIndex: nextIndex,
         activePanel: 'services',
         serviceLogScroll: 0,
-        selectedLogIndex: 0
+        selectedLogIndex: 0,
+        serviceSelectedLogIndex: 0,
+        serviceExpandedLogIds: {}
       };
     }
 
     case 'SET_ACTIVE_PANEL':
       return {
         ...state,
-        activePanel: action.panel,
-        selectedLogIndex: 0
+        activePanel: action.panel
       };
 
     case 'SET_ACTIVE_TAB':
@@ -213,7 +224,9 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         activeTab: action.tab,
         activePanel: 'serviceLogs',
         serviceLogScroll: 0,
-        selectedLogIndex: 0
+        selectedLogIndex: 0,
+        serviceSelectedLogIndex: 0,
+        serviceExpandedLogIds: {}
       };
 
     case 'SET_NARROW_TAB':
@@ -559,30 +572,66 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
     }
 
     case 'SELECT_LOG_ROW': {
-      return {
-        ...state,
-        selectedLogIndex: Math.max(0, action.index)
-      };
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      const idx = Math.max(0, action.index);
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectedLogIndex: idx,
+          selectedLogIndex: idx
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectedLogIndex: idx,
+          selectedLogIndex: idx
+        };
+      }
     }
 
     case 'NAVIGATE_LOG_SELECTION': {
-      const nextIndex = Math.max(0, Math.min(action.maxIndex, state.selectedLogIndex + action.delta));
-      return {
-        ...state,
-        selectedLogIndex: nextIndex
-      };
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const nextIndex = Math.max(0, Math.min(action.maxIndex, state.serviceSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          serviceSelectedLogIndex: nextIndex,
+          selectedLogIndex: nextIndex
+        };
+      } else {
+        const nextIndex = Math.max(0, Math.min(action.maxIndex, state.globalSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          globalSelectedLogIndex: nextIndex,
+          selectedLogIndex: nextIndex
+        };
+      }
     }
 
     case 'TOGGLE_LOG_EXPANSION': {
-      const currentVal = state.expandedLogIds[action.logId];
-      const isCurrentlyExpanded = currentVal !== undefined ? currentVal : state.isWrapMode;
-      return {
-        ...state,
-        expandedLogIds: {
-          ...state.expandedLogIds,
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const isCurrentlyExpanded = !!state.serviceExpandedLogIds[action.logId];
+        const nextServiceExpanded = {
+          ...state.serviceExpandedLogIds,
           [action.logId]: !isCurrentlyExpanded
-        }
-      };
+        };
+        return {
+          ...state,
+          serviceExpandedLogIds: nextServiceExpanded,
+          expandedLogIds: nextServiceExpanded
+        };
+      } else {
+        const isCurrentlyExpanded = !!state.globalExpandedLogIds[action.logId];
+        // Accordion in global logs: expanding a log collapses any prior expanded log in the global stream
+        // This guarantees that multiple bulky JSON trees never crowd out logs from other services
+        const nextGlobalExpanded = isCurrentlyExpanded ? { [action.logId]: false } : { [action.logId]: true };
+        return {
+          ...state,
+          globalExpandedLogIds: nextGlobalExpanded,
+          expandedLogIds: nextGlobalExpanded
+        };
+      }
     }
 
     case 'TOGGLE_ALL_JSON_EXPANSION': {

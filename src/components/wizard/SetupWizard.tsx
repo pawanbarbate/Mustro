@@ -74,11 +74,16 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
   const workspaceName = path.basename(process.cwd()) || 'Workspace';
   const activeConfigFilename = configFilePath ? path.basename(configFilePath) : 'config.devpulse.json';
 
-  // Assert clean SGR mouse reporting mode on mount
+  // Assert clean SGR mouse reporting mode on mount and restore native on unmount
   useEffect(() => {
     try {
       process.stdout.write('\x1b[?1000h\x1b[?1006h');
     } catch {}
+    return () => {
+      try {
+        process.stdout.write('\x1b[?1000l\x1b[?1006l');
+      } catch {}
+    };
   }, []);
 
   // Live clock timer for top Header

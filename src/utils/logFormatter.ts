@@ -293,7 +293,16 @@ export function calculateVisibleLogWindow(params: {
   const { logs, availableLines, scrollOffset, expandedLogIds = {}, isWrapMode = false, anchorLogId } = params;
   const totalLogs = logs.length;
   const budget = Math.max(1, availableLines);
-  const maxJsonLines = Math.max(1, Math.min(8, budget - 2));
+
+  // Proportional line budgeting:
+  // Capping maxTotalLogLines ensures at least 2-3 other logs always remain visible alongside any expanded JSON log,
+  // and the total rendered footprint never exceeds availableLines (budget), while smoothly scaling up to 10 lines in tall terminals.
+  const maxTotalLogLines = budget <= 1
+    ? 1
+    : budget === 2
+      ? 2
+      : Math.max(3, Math.min(10, Math.floor(budget * 0.55)));
+  const maxJsonLines = Math.max(0, maxTotalLogLines - 1);
 
   if (totalLogs === 0) {
     return {
@@ -308,37 +317,23 @@ export function calculateVisibleLogWindow(params: {
   }
 
   const getLogWeight = (log: LogEntry): number => {
-    const isExp = !!(
-      expandedLogIds[log.id] !== undefined
-        ? expandedLogIds[log.id]
-        : isWrapMode
-    );
+    // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings, never auto-expands JSON trees
+    const isExp = !!expandedLogIds[log.id];
     if (!isExp) return 1;
     const jsonRes = parseJsonLog(log.message);
     if (!jsonRes.isJson || !jsonRes.parsed) return 1;
     const fullLines = formatJsonToHighlightedLines(jsonRes.parsed);
-    const expLines = Math.min(fullLines.length, maxJsonLines) + (fullLines.length > maxJsonLines ? 1 : 0);
+    const expLines = Math.min(fullLines.length, maxJsonLines);
     return 1 + expLines;
   };
 
   const maxScroll = Math.max(0, totalLogs - 1);
   const effectiveOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
 
-  // Determine target anchor
+  // Determine target anchor only if explicitly provided
   let targetIdx: number = -1;
   if (anchorLogId !== undefined && anchorLogId !== null) {
     targetIdx = logs.findIndex(l => l.id === anchorLogId);
-  }
-
-  // If no anchorLogId or not found, check if any expanded log is near current scroll view
-  if (targetIdx === -1) {
-    const defaultEnd = Math.max(1, totalLogs - effectiveOffset);
-    for (let i = defaultEnd - 1; i >= Math.max(0, defaultEnd - 10); i--) {
-      if (logs[i] && expandedLogIds[logs[i]!.id]) {
-        targetIdx = i;
-        break;
-      }
-    }
   }
 
   let visible: LogEntry[] = [];
@@ -355,7 +350,7 @@ export function calculateVisibleLogWindow(params: {
     let aboveIdx = targetIdx - 1;
 
     if (effectiveOffset === 0) {
-      // Live tail: prefer logs below
+      // Live tail: prefer logs below towards latest
       while (belowIdx < totalLogs) {
         const nextLog = logs[belowIdx]!;
         const weight = getLogWeight(nextLog);
