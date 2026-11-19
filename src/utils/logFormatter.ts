@@ -294,15 +294,10 @@ export function calculateVisibleLogWindow(params: {
   const totalLogs = logs.length;
   const budget = Math.max(1, availableLines);
 
-  // Proportional line budgeting:
-  // Capping maxTotalLogLines ensures at least 2-3 other logs always remain visible alongside any expanded JSON log,
-  // and the total rendered footprint never exceeds availableLines (budget), while smoothly scaling up to 10 lines in tall terminals.
-  const maxTotalLogLines = budget <= 1
-    ? 1
-    : budget === 2
-      ? 2
-      : Math.max(3, Math.min(10, Math.floor(budget * 0.55)));
-  const maxJsonLines = Math.max(0, maxTotalLogLines - 1);
+  // Full inline budgeting:
+  // Allow expanded JSON to utilize the panel budget (leaving at least 1 line for the log's header)
+  // without artificial 55% or 10-line caps.
+  const maxJsonLines = Math.max(1, budget - 1);
 
   if (totalLogs === 0) {
     return {

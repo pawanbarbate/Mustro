@@ -116,15 +116,7 @@ async function runClipboardTests() {
   state = dashboardReducer(state, { type: 'HIDE_TOAST' });
   assert.strictEqual(state.toastMessage, null);
   assert.strictEqual(state.toastExpiresAt, undefined);
-
-  // 6d. OPEN_LOG_INSPECTOR and CLOSE_LOG_INSPECTOR
-  state = dashboardReducer(state, { type: 'OPEN_LOG_INSPECTOR', log: sampleLog });
-  assert.strictEqual(state.inspectingLog?.id, 'log-1');
-  assert.strictEqual(state.inspectingLog?.message, sampleLog.message);
-
-  state = dashboardReducer(state, { type: 'CLOSE_LOG_INSPECTOR' });
-  assert.strictEqual(state.inspectingLog, null);
-  console.log('✔ Reducer toast and log inspector actions verified');
+  console.log('✔ Reducer toast actions verified');
 
   console.log('\n=== ALL CLIPBOARD & LOG SHARING TESTS PASSED (6/6) ===');
 }

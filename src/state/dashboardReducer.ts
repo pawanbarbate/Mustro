@@ -46,13 +46,12 @@ export interface DashboardState {
   showHelp: boolean;
   toastMessage?: string | null;
   toastExpiresAt?: number;
-  inspectingLog?: LogEntry | null;
   isWrapMode: boolean;
-  inspectorScrollOffset: number;
-  inspectorTab: 'formatted' | 'raw';
   selectedLogIndex: number;
   serviceSelectedLogIndex: number;
   globalSelectedLogIndex: number;
+  serviceJsonLineScroll: number;
+  globalJsonLineScroll: number;
   expandedLogIds: Record<string | number, boolean>;
   serviceExpandedLogIds: Record<string | number, boolean>;
   globalExpandedLogIds: Record<string | number, boolean>;
@@ -80,13 +79,12 @@ export const initialDashboardState: DashboardState = {
   filterOptions: FILTER_OPTIONS,
   showHelp: false,
   toastMessage: null,
-  inspectingLog: null,
   isWrapMode: false,
-  inspectorScrollOffset: 0,
-  inspectorTab: 'formatted',
   selectedLogIndex: 0,
   serviceSelectedLogIndex: 0,
   globalSelectedLogIndex: 0,
+  serviceJsonLineScroll: 0,
+  globalJsonLineScroll: 0,
   expandedLogIds: {},
   serviceExpandedLogIds: {},
   globalExpandedLogIds: {},
@@ -172,13 +170,11 @@ export type DashboardAction =
   | { type: 'PROCESS_STATUS_CHANGED'; serviceName: string; status: ServiceStatus; pid?: number; error?: string; statusText?: string }
   | { type: 'SHOW_TOAST'; message: string; durationMs?: number }
   | { type: 'HIDE_TOAST' }
-  | { type: 'OPEN_LOG_INSPECTOR'; log: LogEntry }
-  | { type: 'CLOSE_LOG_INSPECTOR' }
   | { type: 'TOGGLE_WRAP_MODE' }
-  | { type: 'SCROLL_INSPECTOR'; delta: number; maxScroll: number }
-  | { type: 'SET_INSPECTOR_TAB'; tab: 'formatted' | 'raw' }
   | { type: 'SELECT_LOG_ROW'; index: number; panel?: 'service' | 'global' }
   | { type: 'NAVIGATE_LOG_SELECTION'; delta: number; maxIndex: number; panel?: 'service' | 'global' }
+  | { type: 'SCROLL_JSON_LINES'; delta: number; maxScroll: number; panel?: 'service' | 'global' }
+  | { type: 'RESET_JSON_LINE_SCROLL'; panel?: 'service' | 'global' }
   | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global' }
   | { type: 'TOGGLE_ALL_JSON_EXPANSION'; forceState?: boolean }
   | { type: 'TOGGLE_MOUSE_MODE' }
@@ -195,6 +191,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         serviceLogScroll: 0,
         selectedLogIndex: 0,
         serviceSelectedLogIndex: 0,
+        serviceJsonLineScroll: 0,
+        globalJsonLineScroll: 0,
         serviceExpandedLogIds: {}
       };
     }
@@ -208,6 +206,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         serviceLogScroll: 0,
         selectedLogIndex: 0,
         serviceSelectedLogIndex: 0,
+        serviceJsonLineScroll: 0,
+        globalJsonLineScroll: 0,
         serviceExpandedLogIds: {}
       };
     }
@@ -226,6 +226,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         serviceLogScroll: 0,
         selectedLogIndex: 0,
         serviceSelectedLogIndex: 0,
+        serviceJsonLineScroll: 0,
+        globalJsonLineScroll: 0,
         serviceExpandedLogIds: {}
       };
 
@@ -531,43 +533,10 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
       };
     }
 
-    case 'OPEN_LOG_INSPECTOR': {
-      return {
-        ...state,
-        inspectingLog: action.log,
-        inspectorScrollOffset: 0,
-        inspectorTab: 'formatted'
-      };
-    }
-
-    case 'CLOSE_LOG_INSPECTOR': {
-      return {
-        ...state,
-        inspectingLog: null,
-        inspectorScrollOffset: 0
-      };
-    }
-
     case 'TOGGLE_WRAP_MODE': {
       return {
         ...state,
         isWrapMode: !state.isWrapMode
-      };
-    }
-
-    case 'SCROLL_INSPECTOR': {
-      const nextOffset = Math.max(0, Math.min(action.maxScroll, state.inspectorScrollOffset + action.delta));
-      return {
-        ...state,
-        inspectorScrollOffset: nextOffset
-      };
-    }
-
-    case 'SET_INSPECTOR_TAB': {
-      return {
-        ...state,
-        inspectorTab: action.tab,
-        inspectorScrollOffset: 0
       };
     }
 
@@ -578,13 +547,15 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         return {
           ...state,
           serviceSelectedLogIndex: idx,
-          selectedLogIndex: idx
+          selectedLogIndex: idx,
+          serviceJsonLineScroll: 0
         };
       } else {
         return {
           ...state,
           globalSelectedLogIndex: idx,
-          selectedLogIndex: idx
+          selectedLogIndex: idx,
+          globalJsonLineScroll: 0
         };
       }
     }
@@ -596,14 +567,48 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         return {
           ...state,
           serviceSelectedLogIndex: nextIndex,
-          selectedLogIndex: nextIndex
+          selectedLogIndex: nextIndex,
+          serviceJsonLineScroll: 0
         };
       } else {
         const nextIndex = Math.max(0, Math.min(action.maxIndex, state.globalSelectedLogIndex + action.delta));
         return {
           ...state,
           globalSelectedLogIndex: nextIndex,
-          selectedLogIndex: nextIndex
+          selectedLogIndex: nextIndex,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'SCROLL_JSON_LINES': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const nextOffset = Math.max(0, Math.min(action.maxScroll, state.serviceJsonLineScroll + action.delta));
+        return {
+          ...state,
+          serviceJsonLineScroll: nextOffset
+        };
+      } else {
+        const nextOffset = Math.max(0, Math.min(action.maxScroll, state.globalJsonLineScroll + action.delta));
+        return {
+          ...state,
+          globalJsonLineScroll: nextOffset
+        };
+      }
+    }
+
+    case 'RESET_JSON_LINE_SCROLL': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        return {
+          ...state,
+          globalJsonLineScroll: 0
         };
       }
     }

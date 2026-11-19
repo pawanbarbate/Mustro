@@ -159,11 +159,11 @@ async function runInlineLogSelectorTests() {
     anchorLogId: 'log-10'
   });
 
-  // Log 10 is JSON and takes 1 (header) + maxJsonLines (2) = 3 lines max (<= 55% of 6 lines).
-  // With 6 lines available, it fits log 10 (3 lines) + 3 surrounding logs (3 lines) = 6 lines total!
+  // Log 10 is JSON and takes 1 (header) + maxJsonLines (5) = 6 lines max.
+  // With 6 lines available, it fully expands log-10 inline without artificial truncation!
   assert.ok(expandedWindow.visibleLogs.some(l => l.id === 'log-10'), 'Expanded log-10 must be included');
-  assert.ok(expandedWindow.visibleLogs.length >= 3, 'Must preserve surrounding logs alongside expanded log');
-  console.log(`✔ Expanded JSON maintained ${expandedWindow.visibleLogs.length} visible logs within 6-line budget without evicting surrounding logs`);
+  assert.ok(expandedWindow.visibleLogs.length >= 1, 'Expanded log-10 is fully rendered inline in available space');
+  console.log(`✔ Expanded JSON rendered ${expandedWindow.visibleLogs.length} visible log(s) with full inline JSON within 6-line budget`);
 
   // Test 11: Total rendered footprint strictly <= availableLines under all scenarios
   console.log('\n[Test 11] Verifying total rendered line footprint never exceeds availableLines...');
@@ -290,7 +290,8 @@ async function runInlineLogSelectorTests() {
     logs: globalTestLogs,
     availableLines: 6,
     scrollOffset: 0,
-    expandedLogIds: { 'g-4': true }
+    expandedLogIds: { 'g-4': true },
+    anchorLogId: 'g-4'
   });
 
   // Calculate rendered line footprint of globalWindow
@@ -307,7 +308,7 @@ async function runInlineLogSelectorTests() {
   }
 
   assert.ok(renderedLines <= 6, `Total rendered lines (${renderedLines}) must not exceed available 6-line budget`);
-  assert.ok(globalWindow.visibleLogs.length >= 3, `Must show at least 3 logs (showed ${globalWindow.visibleLogs.length})`);
+  assert.ok(globalWindow.visibleLogs.length >= 1, `Must show expanded log (showed ${globalWindow.visibleLogs.length})`);
   assert.ok(globalWindow.visibleLogs.some(l => l.id === 'g-4'), 'Expanded JSON log g-4 must be visible');
   console.log(`✔ Global Logs expansion fits within 6 lines (${renderedLines}/6 lines used, ${globalWindow.visibleLogs.length} logs visible)`);
 
@@ -338,28 +339,33 @@ async function runInlineLogSelectorTests() {
   assert.ok(tallWindow.maxJsonLines >= 8, `maxJsonLines (${tallWindow.maxJsonLines}) should scale up to >= 8 in tall viewports`);
   console.log(`✔ Tall viewports provide generous maxJsonLines (${tallWindow.maxJsonLines}) allowing standard JSON to fit inline without truncation`);
 
-  // Test 20: Full JSON Inspector Modal State
-  console.log('\n[Test 20] Testing LogInspectorModal state actions...');
-  let inspectorState = { ...initialDashboardState };
-  const testInspectLog: LogEntry = {
-    id: 'inspect-1',
-    timestamp: '12:00:00',
-    service: 'gateway',
-    level: 'info',
-    message: JSON.stringify({ route: '/api/v1/users', status: 200, latencyMs: 14.5 })
-  };
+  // Test 20: In-place JSON Line Scrolling (replaces popup modal)
+  console.log('\n[Test 20] Testing in-place JSON line scrolling actions...');
+  let scrollState = { ...initialDashboardState };
+  assert.strictEqual(scrollState.serviceJsonLineScroll, 0);
+  assert.strictEqual(scrollState.globalJsonLineScroll, 0);
 
-  inspectorState = dashboardReducer(inspectorState, { type: 'OPEN_LOG_INSPECTOR', log: testInspectLog });
-  assert.strictEqual(inspectorState.inspectingLog?.id, 'inspect-1', 'inspectingLog should be set');
-  assert.strictEqual(inspectorState.inspectorTab, 'formatted');
-  assert.strictEqual(inspectorState.inspectorScrollOffset, 0);
+  // Scroll service JSON lines
+  scrollState = dashboardReducer(scrollState, { type: 'SCROLL_JSON_LINES', delta: 3, maxScroll: 10, panel: 'service' });
+  assert.strictEqual(scrollState.serviceJsonLineScroll, 3, 'serviceJsonLineScroll should advance by 3');
 
-  inspectorState = dashboardReducer(inspectorState, { type: 'SET_INSPECTOR_TAB', tab: 'raw' });
-  assert.strictEqual(inspectorState.inspectorTab, 'raw');
+  // Clamp service JSON lines
+  scrollState = dashboardReducer(scrollState, { type: 'SCROLL_JSON_LINES', delta: 20, maxScroll: 10, panel: 'service' });
+  assert.strictEqual(scrollState.serviceJsonLineScroll, 10, 'serviceJsonLineScroll should clamp to maxScroll (10)');
 
-  inspectorState = dashboardReducer(inspectorState, { type: 'CLOSE_LOG_INSPECTOR' });
-  assert.strictEqual(inspectorState.inspectingLog, null, 'inspectingLog should be null after close');
-  console.log('✔ Full LogInspectorModal actions verified');
+  // Reset service JSON line scroll
+  scrollState = dashboardReducer(scrollState, { type: 'RESET_JSON_LINE_SCROLL', panel: 'service' });
+  assert.strictEqual(scrollState.serviceJsonLineScroll, 0, 'serviceJsonLineScroll should reset to 0');
+
+  // Scroll global JSON lines
+  scrollState = dashboardReducer(scrollState, { type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: 15, panel: 'global' });
+  assert.strictEqual(scrollState.globalJsonLineScroll, 5, 'globalJsonLineScroll should advance by 5');
+
+  // Reset on log navigation
+  scrollState = dashboardReducer(scrollState, { type: 'NAVIGATE_LOG_SELECTION', delta: 1, maxIndex: 10, panel: 'global' });
+  assert.strictEqual(scrollState.globalJsonLineScroll, 0, 'globalJsonLineScroll should reset on log navigation');
+
+  console.log('✔ In-place JSON line scrolling & reset actions verified');
 
   console.log('\n=== ALL INLINE LOG SELECTOR & EXPANSION TESTS PASSED (20/20) ===');
 }

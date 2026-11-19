@@ -75,9 +75,9 @@ export const Footer: React.FC<FooterProps> = React.memo(({
         {activePanel !== 'services' && !isNarrow && (
           <>
             <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
-              <Text color={theme.colors.accent} bold>i</Text>
+              <Text color={theme.colors.accent} bold>v</Text>
             </Box>
-            <Text color={theme.colors.textSecondary}>Inspect </Text>
+            <Text color={theme.colors.textSecondary}>Expand </Text>
           </>
         )}
 

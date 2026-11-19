@@ -18,6 +18,7 @@ export interface ServiceDetailPanelProps {
   isUltraCompact?: boolean;
   isWrapMode?: boolean;
   selectedLogIndex?: number;
+  jsonLineScroll?: number;
   expandedLogIds?: Record<string | number, boolean>;
   copiedLogId?: string | number | null;
   onRestart?: () => void;
@@ -27,7 +28,6 @@ export interface ServiceDetailPanelProps {
   onFocus?: () => void;
   onCopyCurrent?: () => void;
   onCopyLog?: (log: LogEntry) => void;
-  onInspectLog?: (log: LogEntry) => void;
   onSelectLogIndex?: (index: number) => void;
   onToggleExpandLog?: (logId: string | number) => void;
 }
@@ -51,6 +51,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   isUltraCompact = false,
   isWrapMode = false,
   selectedLogIndex = 0,
+  jsonLineScroll = 0,
   expandedLogIds = {},
   copiedLogId = null,
   onRestart,
@@ -60,7 +61,6 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   onFocus,
   onCopyCurrent,
   onCopyLog,
-  onInspectLog,
   onSelectLogIndex,
   onToggleExpandLog
 }) => {
@@ -468,24 +468,21 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
             // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings
             const isExpanded = !!(jsonResult.isJson && expandedLogIds[log.id]);
 
-            let highlightedLines: { tokens: any[]; isClickableInspect?: boolean }[] = [];
+            let highlightedLines: { tokens: any[] }[] = [];
+            let jsonScrollInfo: { start: number; end: number; total: number } | null = null;
             if (isExpanded && jsonResult.parsed && maxJsonLines > 0) {
               const fullLines = formatJsonToHighlightedLines(jsonResult.parsed);
               if (fullLines.length <= maxJsonLines) {
                 highlightedLines = fullLines;
-              } else if (maxJsonLines === 1) {
-                highlightedLines = [{
-                  tokens: [{ text: `  ... (+${fullLines.length} lines of JSON - click [ 🔍 View All ])`, color: theme.colors.accent, dim: false }],
-                  isClickableInspect: true
-                }];
               } else {
-                const previewLimit = maxJsonLines - 1;
-                highlightedLines = fullLines.slice(0, previewLimit);
-                const remaining = fullLines.length - previewLimit;
-                highlightedLines.push({
-                  tokens: [{ text: `  ... (+${remaining} more lines - click [ 🔍 View All ] to inspect)`, color: theme.colors.accent, dim: false }],
-                  isClickableInspect: true
-                });
+                const maxScroll = fullLines.length - maxJsonLines;
+                const offset = Math.max(0, Math.min(maxScroll, jsonLineScroll || 0));
+                highlightedLines = fullLines.slice(offset, offset + maxJsonLines);
+                jsonScrollInfo = {
+                  start: offset + 1,
+                  end: Math.min(fullLines.length, offset + maxJsonLines),
+                  total: fullLines.length
+                };
               }
             }
 
@@ -524,7 +521,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                       <Text color={theme.colors.textDim}>] </Text>
                     </Box>
 
-                    {/* Inline Expand & Inspect Toggles for JSON */}
+                    {/* Inline Expand Toggle for JSON (100% in-place) */}
                     {jsonResult.isJson && (
                       <Box flexDirection="row" alignItems="center" flexShrink={0} marginRight={1}>
                         <Clickable
@@ -534,26 +531,18 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                             onToggleExpandLog?.(log.id);
                           }}
                         >
-                          <Box flexShrink={0} marginRight={isExpanded && onInspectLog ? 1 : 0} backgroundColor={theme.colors.card} paddingX={1}>
+                          <Box flexShrink={0} backgroundColor={theme.colors.card} paddingX={1}>
                             <Text color={theme.colors.accent} bold>
                               {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
                             </Text>
                           </Box>
                         </Clickable>
-                        {isExpanded && onInspectLog && (
-                          <Clickable
-                            onClick={() => {
-                              onFocus?.();
-                              onSelectLogIndex?.(index);
-                              onInspectLog(log);
-                            }}
-                          >
-                            <Box flexShrink={0} backgroundColor={theme.colors.accentDark} paddingX={1}>
-                              <Text color={theme.colors.accent} bold>
-                                [ 🔍 View All ]
-                              </Text>
-                            </Box>
-                          </Clickable>
+                        {isExpanded && jsonScrollInfo && (
+                          <Box backgroundColor={theme.colors.card} paddingX={1} marginLeft={1}>
+                            <Text color={theme.colors.warning} bold>
+                              [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines ↑↓]
+                            </Text>
+                          </Box>
                         )}
                       </Box>
                     )}
@@ -575,30 +564,18 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                 {isExpanded && highlightedLines.length > 0 && (
                   <Box flexDirection="column" paddingLeft={12} marginTop={0} marginBottom={0}>
                     {highlightedLines.map((hl, hlIdx) => (
-                      hl.isClickableInspect && onInspectLog ? (
-                        <Clickable key={hlIdx} onClick={() => onInspectLog(log)}>
-                          <Box flexDirection="row">
-                            {hl.tokens.map((tok, tokIdx) => (
-                              <Text key={tokIdx} color={tok.color} bold={tok.bold} underline>
-                                {tok.text}
-                              </Text>
-                            ))}
-                          </Box>
-                        </Clickable>
-                      ) : (
-                        <Box key={hlIdx} flexDirection="row">
-                          {hl.tokens.map((tok, tokIdx) => (
-                            <Text
-                              key={tokIdx}
-                              color={tok.color}
-                              bold={tok.bold}
-                              dimColor={tok.dim}
-                            >
-                              {tok.text}
-                            </Text>
-                          ))}
-                        </Box>
-                      )
+                      <Box key={hlIdx} flexDirection="row">
+                        {hl.tokens.map((tok, tokIdx) => (
+                          <Text
+                            key={tokIdx}
+                            color={tok.color}
+                            bold={tok.bold}
+                            dimColor={tok.dim}
+                          >
+                            {tok.text}
+                          </Text>
+                        ))}
+                      </Box>
                     ))}
                   </Box>
                 )}

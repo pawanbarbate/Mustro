@@ -101,8 +101,8 @@ async function runLogFormatterTests() {
 
   console.log('✔ Syntax highlighting token classification verified');
 
-  // Test 5: Reducer wrap mode & inspector scrolling state management
-  console.log('\n[Test 5] Testing Reducer Wrap Mode & Inspector State...');
+  // Test 5: Reducer wrap mode & in-place JSON line scrolling state management
+  console.log('\n[Test 5] Testing Reducer Wrap Mode & In-Place JSON Line Scrolling...');
   let state = initialDashboardState;
   assert.strictEqual(state.isWrapMode, false, 'Default isWrapMode is false');
 
@@ -112,32 +112,19 @@ async function runLogFormatterTests() {
   state = dashboardReducer(state, { type: 'TOGGLE_WRAP_MODE' });
   assert.strictEqual(state.isWrapMode, false, 'Wrap mode toggled back to false');
 
-  // 5b. Open Inspector resets scroll & sets tab to formatted
-  const sampleLog: LogEntry = {
-    id: 'l-test',
-    timestamp: '15:00:00',
-    service: 'api',
-    message: pinoLog,
-    level: 'info'
-  };
-  state = dashboardReducer(state, { type: 'OPEN_LOG_INSPECTOR', log: sampleLog });
-  assert.strictEqual(state.inspectorScrollOffset, 0);
-  assert.strictEqual(state.inspectorTab, 'formatted');
+  // 5b. Scroll JSON lines in-place
+  state = dashboardReducer(state, { type: 'SCROLL_JSON_LINES', delta: 4, maxScroll: 20, panel: 'service' });
+  assert.strictEqual(state.serviceJsonLineScroll, 4);
 
-  // 5c. Scroll Inspector
-  state = dashboardReducer(state, { type: 'SCROLL_INSPECTOR', delta: 4, maxScroll: 20 });
-  assert.strictEqual(state.inspectorScrollOffset, 4);
+  // 5c. Scroll JSON lines clamp
+  state = dashboardReducer(state, { type: 'SCROLL_JSON_LINES', delta: 50, maxScroll: 20, panel: 'service' });
+  assert.strictEqual(state.serviceJsonLineScroll, 20);
 
-  // 5d. Scroll Inspector clamp
-  state = dashboardReducer(state, { type: 'SCROLL_INSPECTOR', delta: 50, maxScroll: 20 });
-  assert.strictEqual(state.inspectorScrollOffset, 20);
+  // 5d. Reset JSON line scroll
+  state = dashboardReducer(state, { type: 'RESET_JSON_LINE_SCROLL', panel: 'service' });
+  assert.strictEqual(state.serviceJsonLineScroll, 0);
 
-  // 5e. Switch Inspector Tab
-  state = dashboardReducer(state, { type: 'SET_INSPECTOR_TAB', tab: 'raw' });
-  assert.strictEqual(state.inspectorTab, 'raw');
-  assert.strictEqual(state.inspectorScrollOffset, 0);
-
-  console.log('✔ Reducer Wrap Mode & Inspector actions verified');
+  console.log('✔ Reducer Wrap Mode & in-place JSON line scrolling verified');
 
   console.log('\n=== ALL LOG FORMATTER & JSON INSPECTION TESTS PASSED (5/5) ===');
 }

@@ -86,8 +86,8 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Copy all error logs for service</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color="#A78BFA" bold>Enter  /  v</Text>
-          <Text color={theme.colors.textSecondary}>Expand / collapse JSON log inline</Text>
+          <Text color="#A78BFA" bold>Enter / v / i</Text>
+          <Text color={theme.colors.textSecondary}>Expand / collapse full JSON inline in feed</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.warning} bold>m</Text>
