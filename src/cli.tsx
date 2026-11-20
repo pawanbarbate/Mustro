@@ -94,7 +94,7 @@ const App: React.FC = () => {
   // Initialize canvas background (TrueColor BCE) strictly on alternate screen buffer on mount and resize
   useEffect(() => {
     try {
-      process.stdout.write(`\x1b[?1049h${theme.ansi.initScreen}\x1b[?1000l\x1b[?1006l\x1b[?25l`);
+      process.stdout.write(`\x1b[?1049h${theme.ansi.initScreen}\x1b[?1000h\x1b[?1002h\x1b[?1006h\x1b[?25l`);
     } catch {}
 
     const handleResize = () => {

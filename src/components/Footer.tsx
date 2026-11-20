@@ -9,6 +9,7 @@ export interface FooterProps {
   activePanel?: ActivePanel;
   width?: number;
   mouseMode?: 'interactive' | 'native';
+  selectionText?: string | null;
   onToggleHelp?: () => void;
   onSwitchConfig?: () => void;
   onToggleMouseMode?: () => void;
@@ -19,6 +20,7 @@ export const Footer: React.FC<FooterProps> = React.memo(({
   activePanel = 'services', 
   width = 120,
   mouseMode = 'interactive',
+  selectionText = null,
   onToggleHelp,
   onSwitchConfig,
   onToggleMouseMode
@@ -67,10 +69,12 @@ export const Footer: React.FC<FooterProps> = React.memo(({
         </Box>
         <Text color={theme.colors.stopped}>Run/Stop </Text>
 
-        <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
-          <Text color={theme.colors.accent} bold>c</Text>
+        <Box backgroundColor={selectionText ? '#0369A1' : theme.colors.card} paddingX={1} marginRight={1}>
+          <Text color={selectionText ? '#FFFFFF' : theme.colors.accent} bold>c</Text>
         </Box>
-        <Text color={theme.colors.textSecondary}>Copy </Text>
+        <Text color={selectionText ? '#38BDF8' : theme.colors.textSecondary} bold={!!selectionText}>
+          {selectionText ? `Copy (${selectionText}) ` : 'Copy '}
+        </Text>
 
         {activePanel !== 'services' && !isNarrow && (
           <>
@@ -86,9 +90,10 @@ export const Footer: React.FC<FooterProps> = React.memo(({
             <Text color={theme.colors.accent} bold>m</Text>
           </Box>
           <Text color={mouseMode === 'native' ? theme.colors.running : theme.colors.accent} bold>
-            {mouseMode === 'native' ? 'Drag-Select ' : 'Click-Mode '}
+            {mouseMode === 'native' ? 'Native-Drag ' : 'TUI-Select '}
           </Text>
         </Clickable>
+
 
         {!isNarrow && (
           <>

@@ -99,30 +99,35 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     }
   }, [state.copiedLogId]);
 
-  // Mouse Mode effect
+  // Mouse Mode effect: Interactive by default (TUI clicks + drag selection).
+  // When toggled to 'native', mouse reporting is disabled so the OS terminal can drag-select raw text.
   useEffect(() => {
     if (state.mouseMode === 'native') {
-      try { process.stdout.write('\x1b[?1000l\x1b[?1006l'); } catch {}
+      try { process.stdout.write('\x1b[?1000l\x1b[?1002l\x1b[?1006l'); } catch {}
     } else {
-      try { process.stdout.write('\x1b[?1000h\x1b[?1006h'); } catch {}
+      try { process.stdout.write('\x1b[?1000h\x1b[?1002h\x1b[?1006h'); } catch {}
     }
   }, [state.mouseMode]);
+
+  useEffect(() => {
+    return () => {
+      try { process.stdout.write('\x1b[?1000l\x1b[?1002l\x1b[?1006l'); } catch {}
+    };
+  }, []);
 
   const handleToggleMouseMode = () => {
     const nextMode = state.mouseMode === 'interactive' ? 'native' : 'interactive';
     dispatch({ type: 'TOGGLE_MOUSE_MODE' });
     if (nextMode === 'native') {
-      try { process.stdout.write('\x1b[?1000l\x1b[?1006l'); } catch {}
       dispatch({ 
         type: 'SHOW_TOAST', 
-        message: '🖱️ Native Mouse: Drag trackpad to select text. Press "m" to switch back.',
+        message: '🖱️ Native Mouse: Terminal OS text drag enabled. Press "m" for TUI mode.',
         durationMs: 3500 
       });
     } else {
-      try { process.stdout.write('\x1b[?1000h\x1b[?1006h'); } catch {}
       dispatch({ 
         type: 'SHOW_TOAST', 
-        message: '🖱️ Interactive Mouse: Click buttons, tabs, and rows.',
+        message: '🖱️ TUI Mouse: Click buttons, drag-select text/lines, and scroll.',
         durationMs: 3000 
       });
     }
@@ -191,6 +196,26 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     }
   };
 
+  // Calculate active selection summary for Footer
+  let selectionText: string | null = null;
+  if (state.activePanel === 'serviceLogs') {
+    if (state.serviceCharSelection) {
+      const chars = Math.max(0, state.serviceCharSelection.end - state.serviceCharSelection.start);
+      selectionText = `${chars} chars`;
+    } else if (state.serviceSelectionAnchor !== null && state.serviceSelectionAnchor !== state.serviceSelectedLogIndex) {
+      const lines = Math.abs(state.serviceSelectedLogIndex - state.serviceSelectionAnchor) + 1;
+      selectionText = `${lines} lines`;
+    }
+  } else if (state.activePanel === 'globalLogs') {
+    if (state.globalCharSelection) {
+      const chars = Math.max(0, state.globalCharSelection.end - state.globalCharSelection.start);
+      selectionText = `${chars} chars`;
+    } else if (state.globalSelectionAnchor !== null && state.globalSelectionAnchor !== state.globalSelectedLogIndex) {
+      const lines = Math.abs(state.globalSelectedLogIndex - state.globalSelectionAnchor) + 1;
+      selectionText = `${lines} lines`;
+    }
+  }
+
   return (
     <ClickProvider clickManagerRef={clickManagerRef}>
       <Box 
@@ -258,6 +283,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.contentHeight - 1}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.serviceSelectedLogIndex}
+                selectionAnchor={state.serviceSelectionAnchor}
+                charSelection={state.serviceCharSelection}
                 jsonLineScroll={state.serviceJsonLineScroll}
                 expandedLogIds={state.serviceExpandedLogIds}
                 copiedLogId={state.copiedLogId}
@@ -268,7 +295,14 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' })}
+                onSelectLogIndex={(index, isShift) => {
+                  if (isShift) {
+                    const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
+                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'service' });
+                  } else {
+                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' });
+                  }
+                }}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
               />
             )}
@@ -286,6 +320,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.contentHeight - 1}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.globalSelectedLogIndex}
+                selectionAnchor={state.globalSelectionAnchor}
+                charSelection={state.globalCharSelection}
                 jsonLineScroll={state.globalJsonLineScroll}
                 expandedLogIds={state.globalExpandedLogIds}
                 copiedLogId={state.copiedLogId}
@@ -296,7 +332,14 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' })}
+                onSelectLogIndex={(index, isShift) => {
+                  if (isShift) {
+                    const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
+                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'global' });
+                  } else {
+                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' });
+                  }
+                }}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
               />
             )}
@@ -339,6 +382,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 isUltraCompact={viewport.isUltraCompactHeight}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.serviceSelectedLogIndex}
+                selectionAnchor={state.serviceSelectionAnchor}
+                charSelection={state.serviceCharSelection}
                 jsonLineScroll={state.serviceJsonLineScroll}
                 expandedLogIds={state.serviceExpandedLogIds}
                 copiedLogId={state.copiedLogId}
@@ -349,7 +394,14 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' })}
+                onSelectLogIndex={(index, isShift) => {
+                  if (isShift) {
+                    const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
+                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'service' });
+                  } else {
+                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' });
+                  }
+                }}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
               />
               <GlobalLogsPanel 
@@ -365,6 +417,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.globalLogsPanelHeight}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.globalSelectedLogIndex}
+                selectionAnchor={state.globalSelectionAnchor}
+                charSelection={state.globalCharSelection}
                 jsonLineScroll={state.globalJsonLineScroll}
                 expandedLogIds={state.globalExpandedLogIds}
                 copiedLogId={state.copiedLogId}
@@ -375,7 +429,14 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index) => dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' })}
+                onSelectLogIndex={(index, isShift) => {
+                  if (isShift) {
+                    const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
+                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'global' });
+                  } else {
+                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' });
+                  }
+                }}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
               />
             </Box>
@@ -388,6 +449,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
           activePanel={state.activePanel} 
           width={viewport.width} 
           mouseMode={state.mouseMode}
+          selectionText={selectionText}
           onToggleHelp={() => dispatch({ type: 'TOGGLE_HELP', show: !state.showHelp })}
           onSwitchConfig={onSwitchConfig}
           onToggleMouseMode={handleToggleMouseMode}

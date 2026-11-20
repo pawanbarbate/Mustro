@@ -91,7 +91,7 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.warning} bold>m</Text>
-          <Text color={theme.colors.textSecondary}>Toggle Mouse Mode (Clickable vs Native Drag-Select)</Text>
+          <Text color={theme.colors.textSecondary}>Toggle Mouse Mode (TUI Drag-Select vs Native OS Drag)</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.textSecondary} bold>q  /  Ctrl+C</Text>

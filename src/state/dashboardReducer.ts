@@ -50,13 +50,17 @@ export interface DashboardState {
   selectedLogIndex: number;
   serviceSelectedLogIndex: number;
   globalSelectedLogIndex: number;
+  serviceSelectionAnchor: number | null;
+  globalSelectionAnchor: number | null;
+  serviceCharSelection: { start: number; end: number } | null;
+  globalCharSelection: { start: number; end: number } | null;
   serviceJsonLineScroll: number;
   globalJsonLineScroll: number;
   expandedLogIds: Record<string | number, boolean>;
   serviceExpandedLogIds: Record<string | number, boolean>;
   globalExpandedLogIds: Record<string | number, boolean>;
-  mouseMode: 'interactive' | 'native';
   copiedLogId: string | number | null;
+  mouseMode: 'interactive' | 'native';
 }
 
 export const initialDashboardState: DashboardState = {
@@ -83,13 +87,17 @@ export const initialDashboardState: DashboardState = {
   selectedLogIndex: 0,
   serviceSelectedLogIndex: 0,
   globalSelectedLogIndex: 0,
+  serviceSelectionAnchor: null,
+  globalSelectionAnchor: null,
+  serviceCharSelection: null,
+  globalCharSelection: null,
   serviceJsonLineScroll: 0,
   globalJsonLineScroll: 0,
   expandedLogIds: {},
   serviceExpandedLogIds: {},
   globalExpandedLogIds: {},
-  mouseMode: 'native',
-  copiedLogId: null
+  copiedLogId: null,
+  mouseMode: 'interactive'
 };
 
 export function configToServices(config?: DevPulseConfig): Service[] {
@@ -173,6 +181,11 @@ export type DashboardAction =
   | { type: 'TOGGLE_WRAP_MODE' }
   | { type: 'SELECT_LOG_ROW'; index: number; panel?: 'service' | 'global' }
   | { type: 'NAVIGATE_LOG_SELECTION'; delta: number; maxIndex: number; panel?: 'service' | 'global' }
+  | { type: 'EXTEND_LOG_SELECTION'; delta: number; maxIndex: number; panel?: 'service' | 'global' }
+  | { type: 'SET_LOG_SELECTION_RANGE'; anchorIndex: number | null; headIndex: number; panel?: 'service' | 'global' }
+  | { type: 'EXTEND_CHAR_SELECTION'; delta: number; maxLen: number; panel?: 'service' | 'global' }
+  | { type: 'SET_CHAR_SELECTION_RANGE'; start: number; end: number; panel?: 'service' | 'global' }
+  | { type: 'CLEAR_LOG_SELECTION'; panel?: 'service' | 'global' }
   | { type: 'SCROLL_JSON_LINES'; delta: number; maxScroll: number; panel?: 'service' | 'global' }
   | { type: 'RESET_JSON_LINE_SCROLL'; panel?: 'service' | 'global' }
   | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global' }
@@ -191,6 +204,10 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         serviceLogScroll: 0,
         selectedLogIndex: 0,
         serviceSelectedLogIndex: 0,
+        serviceSelectionAnchor: null,
+        globalSelectionAnchor: null,
+        serviceCharSelection: null,
+        globalCharSelection: null,
         serviceJsonLineScroll: 0,
         globalJsonLineScroll: 0,
         serviceExpandedLogIds: {}
@@ -206,6 +223,10 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         serviceLogScroll: 0,
         selectedLogIndex: 0,
         serviceSelectedLogIndex: 0,
+        serviceSelectionAnchor: null,
+        globalSelectionAnchor: null,
+        serviceCharSelection: null,
+        globalCharSelection: null,
         serviceJsonLineScroll: 0,
         globalJsonLineScroll: 0,
         serviceExpandedLogIds: {}
@@ -226,6 +247,10 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         serviceLogScroll: 0,
         selectedLogIndex: 0,
         serviceSelectedLogIndex: 0,
+        serviceSelectionAnchor: null,
+        globalSelectionAnchor: null,
+        serviceCharSelection: null,
+        globalCharSelection: null,
         serviceJsonLineScroll: 0,
         globalJsonLineScroll: 0,
         serviceExpandedLogIds: {}
@@ -548,6 +573,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           serviceSelectedLogIndex: idx,
           selectedLogIndex: idx,
+          serviceSelectionAnchor: null,
+          serviceCharSelection: null,
           serviceJsonLineScroll: 0
         };
       } else {
@@ -555,6 +582,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           globalSelectedLogIndex: idx,
           selectedLogIndex: idx,
+          globalSelectionAnchor: null,
+          globalCharSelection: null,
           globalJsonLineScroll: 0
         };
       }
@@ -568,6 +597,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           serviceSelectedLogIndex: nextIndex,
           selectedLogIndex: nextIndex,
+          serviceSelectionAnchor: null,
+          serviceCharSelection: null,
           serviceJsonLineScroll: 0
         };
       } else {
@@ -576,7 +607,142 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           globalSelectedLogIndex: nextIndex,
           selectedLogIndex: nextIndex,
+          globalSelectionAnchor: null,
+          globalCharSelection: null,
           globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'EXTEND_LOG_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
+        const nextIndex = Math.max(0, Math.min(action.maxIndex, state.serviceSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          serviceSelectionAnchor: anchor,
+          serviceSelectedLogIndex: nextIndex,
+          selectedLogIndex: nextIndex,
+          serviceCharSelection: null,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
+        const nextIndex = Math.max(0, Math.min(action.maxIndex, state.globalSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          globalSelectionAnchor: anchor,
+          globalSelectedLogIndex: nextIndex,
+          selectedLogIndex: nextIndex,
+          globalCharSelection: null,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'SET_LOG_SELECTION_RANGE': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      const head = Math.max(0, action.headIndex);
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: action.anchorIndex,
+          serviceSelectedLogIndex: head,
+          selectedLogIndex: head,
+          serviceCharSelection: null,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectionAnchor: action.anchorIndex,
+          globalSelectedLogIndex: head,
+          selectedLogIndex: head,
+          globalCharSelection: null,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'EXTEND_CHAR_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const cur = state.serviceCharSelection;
+        let nextRange: { start: number; end: number } | null = null;
+        if (!cur) {
+          if (action.delta > 0) {
+            nextRange = { start: 0, end: Math.min(action.maxLen, action.delta) };
+          }
+        } else {
+          const nextEnd = Math.max(0, Math.min(action.maxLen, cur.end + action.delta));
+          if (nextEnd <= cur.start) {
+            nextRange = null;
+          } else {
+            nextRange = { start: cur.start, end: nextEnd };
+          }
+        }
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceCharSelection: nextRange
+        };
+      } else {
+        const cur = state.globalCharSelection;
+        let nextRange: { start: number; end: number } | null = null;
+        if (!cur) {
+          if (action.delta > 0) {
+            nextRange = { start: 0, end: Math.min(action.maxLen, action.delta) };
+          }
+        } else {
+          const nextEnd = Math.max(0, Math.min(action.maxLen, cur.end + action.delta));
+          if (nextEnd <= cur.start) {
+            nextRange = null;
+          } else {
+            nextRange = { start: cur.start, end: nextEnd };
+          }
+        }
+        return {
+          ...state,
+          globalSelectionAnchor: null,
+          globalCharSelection: nextRange
+        };
+      }
+    }
+
+    case 'SET_CHAR_SELECTION_RANGE': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      const start = Math.max(0, Math.min(action.start, action.end));
+      const end = Math.max(0, Math.max(action.start, action.end));
+      const range = end > start ? { start, end } : null;
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceCharSelection: range
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectionAnchor: null,
+          globalCharSelection: range
+        };
+      }
+    }
+
+    case 'CLEAR_LOG_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceCharSelection: null
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectionAnchor: null,
+          globalCharSelection: null
         };
       }
     }

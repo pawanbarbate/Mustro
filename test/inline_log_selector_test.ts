@@ -45,16 +45,16 @@ async function runInlineLogSelectorTests() {
   assert.strictEqual(!!state.expandedLogIds[testLogId], false, 'Expansion state should toggle back to false');
   console.log('✔ TOGGLE_LOG_EXPANSION toggles inline expand state');
 
-  // Test 4: TOGGLE_MOUSE_MODE
-  console.log('\n[Test 4] Testing TOGGLE_MOUSE_MODE...');
-  assert.strictEqual(state.mouseMode, 'native', 'Default mouseMode must be native');
+  // Test 4: Interactive Mouse Mode (Default interactive, toggleable to native for raw terminal selection)
+  console.log('\n[Test 4] Testing mouse mode architecture (interactive by default)...');
+  assert.strictEqual(state.mouseMode, 'interactive', 'mouseMode must be interactive by default');
 
   state = dashboardReducer(state, { type: 'TOGGLE_MOUSE_MODE' });
-  assert.strictEqual(state.mouseMode, 'interactive', 'mouseMode should switch to interactive');
+  assert.strictEqual(state.mouseMode, 'native', 'mouseMode should switch to native');
 
   state = dashboardReducer(state, { type: 'TOGGLE_MOUSE_MODE' });
-  assert.strictEqual(state.mouseMode, 'native', 'mouseMode should toggle back to native');
-  console.log('✔ TOGGLE_MOUSE_MODE toggles between native and interactive');
+  assert.strictEqual(state.mouseMode, 'interactive', 'mouseMode should toggle back to interactive');
+  console.log('✔ Mouse mode defaults to interactive (click/drag active) with seamless toggle to native');
 
   // Test 5: SET_COPIED_FLASH
   console.log('\n[Test 5] Testing SET_COPIED_FLASH...');

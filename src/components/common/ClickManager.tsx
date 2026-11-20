@@ -9,20 +9,27 @@ import React, {
 } from 'react';
 import { Box, measureElement, DOMElement } from 'ink';
 
+export interface ClickEvent {
+  shiftKey?: boolean;
+}
+
 export interface ClickableRegion {
   id: string;
-  onClick: () => void;
+  onClick: (event?: ClickEvent) => void;
   minX: number;
   maxX: number;
   minY: number;
   maxY: number;
+  textStartX?: number;
   disabled?: boolean;
 }
 
 export interface ClickManagerContextValue {
   register: (region: ClickableRegion) => void;
   unregister: (id: string) => void;
-  dispatchClick: (mouseX: number, mouseY: number) => boolean;
+  dispatchClick: (mouseX: number, mouseY: number, shiftKey?: boolean) => boolean;
+  findRegionAt: (mouseX: number, mouseY: number) => ClickableRegion | null;
+  findRowRegionAt: (mouseY: number, prefix?: string) => ClickableRegion | null;
 }
 
 const ClickManagerContext = createContext<ClickManagerContextValue | null>(null);
@@ -54,7 +61,7 @@ export const ClickProvider: React.FC<ClickProviderProps> = ({
     regionsRef.current.delete(id);
   }, []);
 
-  const dispatchClick = useCallback((mouseX: number, mouseY: number): boolean => {
+  const findRegionAt = useCallback((mouseX: number, mouseY: number): ClickableRegion | null => {
     // Find all registered regions that hit the mouse coordinates.
     // The region with the smallest area (deepest/innermost child element) takes precedence.
     let bestRegion: ClickableRegion | null = null;
@@ -79,17 +86,36 @@ export const ClickProvider: React.FC<ClickProviderProps> = ({
       }
     }
 
+    return bestRegion;
+  }, []);
+
+  const findRowRegionAt = useCallback((mouseY: number, prefix?: string): ClickableRegion | null => {
+    const regions = Array.from(regionsRef.current.values()).reverse();
+    for (const region of regions) {
+      if (region.disabled) continue;
+      if (prefix && !region.id.startsWith(prefix)) continue;
+      if (mouseY >= region.minY && mouseY <= region.maxY) {
+        return region;
+      }
+    }
+    return null;
+  }, []);
+
+  const dispatchClick = useCallback((mouseX: number, mouseY: number, shiftKey = false): boolean => {
+    const bestRegion = findRegionAt(mouseX, mouseY);
     if (bestRegion) {
-      bestRegion.onClick();
+      bestRegion.onClick({ shiftKey });
       return true;
     }
     return false;
-  }, []);
+  }, [findRegionAt]);
 
   const contextValue: ClickManagerContextValue = {
     register,
     unregister,
-    dispatchClick
+    dispatchClick,
+    findRegionAt,
+    findRowRegionAt
   };
 
   if (clickManagerRef) {
@@ -105,8 +131,9 @@ export const ClickProvider: React.FC<ClickProviderProps> = ({
 
 export interface ClickableProps extends React.ComponentProps<typeof Box> {
   id?: string;
-  onClick: () => void;
+  onClick: (event?: ClickEvent) => void;
   disabled?: boolean;
+  textStartX?: number;
   children: React.ReactNode;
 }
 
@@ -114,6 +141,7 @@ export const Clickable: React.FC<ClickableProps> = ({
   id: propId,
   onClick,
   disabled = false,
+  textStartX,
   children,
   ...boxProps
 }) => {
@@ -125,6 +153,9 @@ export const Clickable: React.FC<ClickableProps> = ({
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
 
+  const textStartXRef = useRef(textStartX);
+  textStartXRef.current = textStartX;
+
   const updateBounds = useCallback(() => {
     if (!ref.current || disabled) {
       unregister(id);
@@ -135,8 +166,9 @@ export const Clickable: React.FC<ClickableProps> = ({
     if (measured.width > 0 && measured.height > 0) {
       register({
         id,
-        onClick: () => onClickRef.current(),
+        onClick: (ev?: ClickEvent) => onClickRef.current(ev),
         disabled,
+        textStartX: textStartXRef.current,
         // measureElement returns 0-indexed layout coordinates relative to root.
         // Terminal SGR mouse coordinates are 1-indexed.
         minX: measured.x + 1,
