@@ -102,11 +102,15 @@ async function runClipboardTests() {
   const detailed = await copyToClipboardDetailed('DevPulse detailed test');
   assert.ok(typeof detailed.success === 'boolean');
   assert.ok(typeof detailed.osSuccess === 'boolean');
-  assert.ok(typeof detailed.osc52Success === 'boolean');
-  const msgOk = getCopyFeedbackMessage({ success: true, osSuccess: true, osc52Success: true }, '✔ Copied');
+  assert.ok(typeof detailed.osc52Sent === 'boolean');
+  assert.strictEqual(detailed.success, detailed.osSuccess, 'Only a native clipboard write can confirm copy success');
+  const msgOk = getCopyFeedbackMessage({ success: true, osSuccess: true, osc52Sent: true }, '✔ Copied');
   assert.strictEqual(msgOk, '✔ Copied');
-  const msgFail = getCopyFeedbackMessage({ success: false, osSuccess: false, osc52Success: false }, '✔ Copied');
+  const msgFail = getCopyFeedbackMessage({ success: false, osSuccess: false, osc52Sent: false }, '✔ Copied');
   assert.ok(msgFail.includes('⚠ Copy failed'));
+  const msgUnconfirmed = getCopyFeedbackMessage({ success: false, osSuccess: false, osc52Sent: true }, '✔ Copied');
+  assert.ok(msgUnconfirmed.includes('Clipboard unavailable'), 'OSC 52 emission must not be reported as confirmed clipboard success');
+  assert.ok(!msgUnconfirmed.includes('✔ Copied'), 'Unconfirmed OSC 52 feedback must not claim copied content');
   console.log('✔ copyToClipboard & copyToClipboardDetailed executed successfully');
 
   // Test 6: Reducer state management for Toast and Log Inspector
@@ -135,4 +139,3 @@ runClipboardTests().catch((err) => {
   console.error('Clipboard test failed:', err);
   process.exit(1);
 });
-

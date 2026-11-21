@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import clipboard from 'clipboardy';
 import fs from 'fs';
 import { LogEntry, Service } from '../types/index.js';
 
@@ -18,74 +18,15 @@ export function getOsc52Sequence(text: string): string {
 }
 
 /**
- * Helper to execute a command with stdin text
- */
-function trySpawnCopy(cmd: string, args: string[], text: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
-      let resolved = false;
-
-      child.on('error', () => {
-        if (!resolved) {
-          resolved = true;
-          resolve(false);
-        }
-      });
-
-      child.on('close', (code) => {
-        if (!resolved) {
-          resolved = true;
-          resolve(code === 0);
-        }
-      });
-
-      child.stdin?.write(text);
-      child.stdin?.end();
-    } catch {
-      resolve(false);
-    }
-  });
-}
-
-/**
- * Copy text to system clipboard using native OS commands
+ * Copy text to the system clipboard using clipboardy platform adapters.
  */
 export async function copyViaOsCommand(text: string): Promise<boolean> {
-  const platform = process.platform;
-
-  if (platform === 'darwin') {
-    return trySpawnCopy('pbcopy', [], text);
+  try {
+    await clipboard.write(text);
+    return true;
+  } catch {
+    return false;
   }
-
-  if (platform === 'win32') {
-    return trySpawnCopy('clip.exe', [], text);
-  }
-
-  // Linux: Try wl-copy (Wayland), xclip (X11), xsel, or clip.exe (WSL)
-  const isWayland = !!process.env.WAYLAND_DISPLAY;
-  const attempts: [string, string[]][] = isWayland
-    ? [
-        ['wl-copy', []],
-        ['xclip', ['-selection', 'clipboard']],
-        ['xsel', ['--clipboard', '--input']],
-        ['clip.exe', []]
-      ]
-    : [
-        ['xclip', ['-selection', 'clipboard']],
-        ['xsel', ['--clipboard', '--input']],
-        ['wl-copy', []],
-        ['clip.exe', []]
-      ];
-
-  for (const [cmd, args] of attempts) {
-    const success = await trySpawnCopy(cmd, args, text);
-    if (success) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 /**
@@ -95,28 +36,32 @@ export function writeOsc52(text: string): boolean {
   try {
     const osc52 = getOsc52Sequence(text);
     if (process.platform !== 'win32') {
+      const ttyFd = fs.openSync('/dev/tty', 'w');
       try {
-        const ttyFd = fs.openSync('/dev/tty', 'w');
         fs.writeSync(ttyFd, osc52);
+      } finally {
         fs.closeSync(ttyFd);
-        return true;
-      } catch {
-        process.stdout.write(osc52);
-        return true;
       }
-    } else {
+      return true;
+    }
+
+    if (process.stdout.isTTY) {
       process.stdout.write(osc52);
       return true;
     }
   } catch {
     return false;
   }
+
+  return false;
 }
 
 export interface CopyResult {
+  /** True only when a native clipboard command reports a successful write. */
   success: boolean;
   osSuccess: boolean;
-  osc52Success: boolean;
+  /** True when an OSC 52 request was emitted; terminals do not acknowledge acceptance. */
+  osc52Sent: boolean;
 }
 
 /**
@@ -124,19 +69,18 @@ export interface CopyResult {
  */
 export async function copyToClipboardDetailed(text: string): Promise<CopyResult> {
   if (!text) {
-    return { success: false, osSuccess: false, osc52Success: false };
+    return { success: false, osSuccess: false, osc52Sent: false };
   }
 
-  // 1. Emit OSC 52 sequence directly to /dev/tty
-  const osc52Success = writeOsc52(text);
+  // OSC 52 is best-effort: terminals do not report whether they accepted it.
+  const osc52Sent = writeOsc52(text);
 
-  // 2. Concurrently execute OS clipboard command
   const osSuccess = await copyViaOsCommand(text);
 
   return {
-    success: osSuccess || osc52Success,
+    success: osSuccess,
     osSuccess,
-    osc52Success
+    osc52Sent
   };
 }
 
@@ -145,21 +89,17 @@ export async function copyToClipboardDetailed(text: string): Promise<CopyResult>
  */
 export function getCopyFeedbackMessage(result: CopyResult, baseMessage: string): string {
   if (!result.success) {
-    return '⚠ Copy failed — install xclip/wl-clipboard or enable OSC 52 in terminal';
-  }
-  if (result.osSuccess) {
-    return baseMessage;
-  }
-  if (process.platform === 'linux') {
-    return `${baseMessage} (Tip: install xclip if desktop paste fails)`;
+    if (result.osc52Sent) {
+      return '⚠ Clipboard unavailable — system clipboard access failed and this terminal did not confirm OSC 52';
+    }
+    return '⚠ Copy failed — check system clipboard access or enable OSC 52 in your terminal';
   }
   return baseMessage;
 }
 
 /**
- * Universal dual-engine clipboard writer:
- * 1. Writes OSC 52 escape code to /dev/tty (works across SSH, tmux, modern terminals)
- * 2. Asynchronously writes to OS native clipboard (pbcopy, xclip, clip.exe)
+ * Attempts an OSC 52 request and writes to the OS clipboard. The boolean
+ * reports only the native clipboard command result, not terminal acceptance.
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
   const result = await copyToClipboardDetailed(text);
@@ -221,4 +161,3 @@ export function formatAllErrors(service: Service): string {
     .join('\n\n');
   return header + body;
 }
-
