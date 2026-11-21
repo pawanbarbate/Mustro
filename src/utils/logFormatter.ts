@@ -150,6 +150,69 @@ export function parseJsonLog(rawMsg: string): JsonLogParseResult {
   }
 }
 
+export function getLogDisplayText(log: LogEntry, maxMessageLength: number, isWrapMode: boolean): string {
+  const parsed = parseJsonLog(log.message);
+  let message = log.message;
+  if (parsed.isJson) {
+    message = parsed.canonicalMsg || (parsed.extraPairs && parsed.extraPairs.length > 0
+      ? parsed.extraPairs.map(pair => `${pair.key}: ${pair.val}`).join(' | ')
+      : (parsed.error || 'Structured payload'));
+  }
+  return isWrapMode || message.length <= maxMessageLength
+    ? message
+    : `${message.slice(0, Math.max(0, maxMessageLength - 1))}…`;
+}
+
+export function getLogMessageColumnOffset(
+  log: LogEntry,
+  baseOffset: number,
+  isExpanded: boolean,
+  scrollRangeLabel?: string
+): number {
+  const parsed = parseJsonLog(log.message);
+  if (!parsed.isJson) return baseOffset;
+
+  const expandLabel = isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)';
+  let offset = baseOffset + expandLabel.length + 3;
+  if (scrollRangeLabel) {
+    offset += 1 + 4 + scrollRangeLabel.length + 3 + 3;
+  }
+  if (parsed.method) offset += `${parsed.method} `.length;
+  if (parsed.path) offset += `${parsed.path} `.length;
+  if (parsed.status) offset += `[${parsed.status}] `.length;
+  if (parsed.latency) offset += `(${parsed.latency}) `.length;
+  return offset;
+}
+
+export function filterGlobalLogs(logs: LogEntry[], searchQuery: string, activeFilter: string): LogEntry[] {
+  const query = searchQuery.trim().toLowerCase();
+  return logs.filter(log => {
+    if (activeFilter !== 'All Services' && log.service.toLowerCase() !== activeFilter.toLowerCase()) {
+      return false;
+    }
+    return !query || log.message.toLowerCase().includes(query) || log.service.toLowerCase().includes(query);
+  });
+}
+
+export function getLogWindowAnchorId(
+  logs: LogEntry[],
+  selectedLogId: string | number | null,
+  expandedLogIds: Record<string | number, boolean>,
+  selectionAnchorLogId: string | number | null = null
+): string | number | null {
+  if (selectionAnchorLogId !== null && logs.some(log => String(log.id) === String(selectionAnchorLogId))) {
+    return selectionAnchorLogId;
+  }
+  if (
+    selectedLogId !== null &&
+    expandedLogIds[selectedLogId] &&
+    logs.some(log => String(log.id) === String(selectedLogId))
+  ) {
+    return selectedLogId;
+  }
+  return Object.keys(expandedLogIds).find(id => expandedLogIds[id]) || null;
+}
+
 /**
  * Returns formatted 2-space indented pretty-printed JSON if input is JSON,
  * or original string verbatim.
@@ -328,7 +391,7 @@ export function calculateVisibleLogWindow(params: {
   // Determine target anchor only if explicitly provided
   let targetIdx: number = -1;
   if (anchorLogId !== undefined && anchorLogId !== null) {
-    targetIdx = logs.findIndex(l => l.id === anchorLogId);
+    targetIdx = logs.findIndex(l => String(l.id) === String(anchorLogId));
   }
 
   let visible: LogEntry[] = [];
@@ -427,4 +490,3 @@ export function calculateVisibleLogWindow(params: {
     maxJsonLines
   };
 }
-

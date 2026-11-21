@@ -124,7 +124,43 @@ async function runLogFormatterTests() {
   state = dashboardReducer(state, { type: 'RESET_JSON_LINE_SCROLL', panel: 'service' });
   assert.strictEqual(state.serviceJsonLineScroll, 0);
 
-  console.log('✔ Reducer Wrap Mode & in-place JSON line scrolling verified');
+  // 5e. Expanded service JSON logs retain independent scroll offsets
+  state = dashboardReducer(state, {
+    type: 'SCROLL_JSON_LINES',
+    delta: 3,
+    maxScroll: 20,
+    logId: 'service-json-a',
+    panel: 'service'
+  });
+  state = dashboardReducer(state, {
+    type: 'SCROLL_JSON_LINES',
+    delta: 7,
+    maxScroll: 20,
+    logId: 'service-json-b',
+    panel: 'service'
+  });
+  assert.strictEqual(state.serviceJsonLineScrollById['service-json-a'], 3);
+  assert.strictEqual(state.serviceJsonLineScrollById['service-json-b'], 7);
+  state = dashboardReducer(state, {
+    type: 'RESET_JSON_LINE_SCROLL',
+    logId: 'service-json-a',
+    panel: 'service'
+  });
+  assert.strictEqual(state.serviceJsonLineScrollById['service-json-a'], 0);
+  assert.strictEqual(state.serviceJsonLineScrollById['service-json-b'], 7);
+  state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: 'service-json-a', panel: 'service' });
+  state = dashboardReducer(state, {
+    type: 'SCROLL_JSON_LINES',
+    delta: 2,
+    maxScroll: 20,
+    logId: 'service-json-a',
+    panel: 'service'
+  });
+  state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: 'service-json-a', panel: 'service' });
+  assert.strictEqual(state.serviceJsonLineScrollById['service-json-a'], undefined);
+  assert.strictEqual(state.serviceJsonLineScrollById['service-json-b'], 7);
+
+  console.log('✔ Reducer wrap mode and independent in-place JSON scrolling verified');
 
   console.log('\n=== ALL LOG FORMATTER & JSON INSPECTION TESTS PASSED (5/5) ===');
 }
@@ -133,4 +169,3 @@ runLogFormatterTests().catch((err) => {
   console.error('Log Formatter test failed:', err);
   process.exit(1);
 });
-

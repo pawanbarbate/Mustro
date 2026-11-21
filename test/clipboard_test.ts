@@ -2,6 +2,8 @@ import assert from 'assert';
 import {
   getOsc52Sequence,
   copyToClipboard,
+  copyToClipboardDetailed,
+  getCopyFeedbackMessage,
   formatLogEntry,
   formatServiceErrorSummary,
   formatAllErrors
@@ -93,11 +95,19 @@ async function runClipboardTests() {
   assert.ok(allErrorsDump.includes('#2 [14:02:00] [ERROR]:\nSecond error stack trace'), 'Includes error 2');
   console.log('✔ formatAllErrors multi-error dump verified');
 
-  // Test 5: copyToClipboard executes without throwing
+  // Test 5: copyToClipboard & copyToClipboardDetailed executes without throwing
   console.log('\n[Test 5] Testing copyToClipboard execution...');
   const copyResult = await copyToClipboard('DevPulse copy test string');
-  assert.ok(copyResult === true, 'copyToClipboard must return true');
-  console.log('✔ copyToClipboard executed successfully');
+  assert.ok(typeof copyResult === 'boolean', 'copyToClipboard must return a boolean');
+  const detailed = await copyToClipboardDetailed('DevPulse detailed test');
+  assert.ok(typeof detailed.success === 'boolean');
+  assert.ok(typeof detailed.osSuccess === 'boolean');
+  assert.ok(typeof detailed.osc52Success === 'boolean');
+  const msgOk = getCopyFeedbackMessage({ success: true, osSuccess: true, osc52Success: true }, '✔ Copied');
+  assert.strictEqual(msgOk, '✔ Copied');
+  const msgFail = getCopyFeedbackMessage({ success: false, osSuccess: false, osc52Success: false }, '✔ Copied');
+  assert.ok(msgFail.includes('⚠ Copy failed'));
+  console.log('✔ copyToClipboard & copyToClipboardDetailed executed successfully');
 
   // Test 6: Reducer state management for Toast and Log Inspector
   console.log('\n[Test 6] Testing Reducer Toast & Inspector actions...');

@@ -4,6 +4,7 @@ import {
   initialDashboardState
 } from '../src/state/dashboardReducer.js';
 import { formatLogEntry } from '../src/utils/clipboard.js';
+import { calculateVisibleLogWindow, filterGlobalLogs, getLogDisplayText } from '../src/utils/logFormatter.js';
 import { LogEntry } from '../src/types/index.js';
 
 async function runLogSelectionTests() {
@@ -158,7 +159,66 @@ async function runLogSelectionTests() {
   assert.strictEqual(state.serviceCharSelection, null);
   console.log('✔ SET_CHAR_SELECTION_RANGE handles mouse character dragging accurately');
 
-  console.log('\n=== ALL LOG SELECTION & INDICATOR TESTS PASSED (10/10) ===');
+  // Test 11: Stable log identity survives line-budget window changes
+  const jsonLog: LogEntry = {
+    id: 'json-target',
+    timestamp: '10:00:04',
+    service: 'auth',
+    level: 'info',
+    message: JSON.stringify({ msg: 'server.started', level: 'info', port: 3000 })
+  };
+  const windowLogs: LogEntry[] = [
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: `plain-${i}`,
+      timestamp: '10:00:00',
+      service: i % 2 === 0 ? 'auth' : 'worker',
+      level: 'info' as const,
+      message: `message-${i}`
+    })),
+    jsonLog,
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: `tail-${i}`,
+      timestamp: '10:00:05',
+      service: 'auth',
+      level: 'info' as const,
+      message: `tail-${i}`
+    }))
+  ];
+  assert.strictEqual(filterGlobalLogs(windowLogs, 'started', 'All Services').length, 1);
+  assert.strictEqual(filterGlobalLogs(windowLogs, '', 'AUTH').length, 9);
+  const displayedMessage = getLogDisplayText(jsonLog, 80, false);
+  assert.strictEqual(displayedMessage, 'server.started');
+  assert.strictEqual(displayedMessage.slice(0, 6), 'server');
+
+  state = dashboardReducer(initialDashboardState, {
+    type: 'SELECT_LOG_ROW',
+    index: 0,
+    logId: jsonLog.id,
+    panel: 'global'
+  });
+  state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: jsonLog.id, panel: 'global' });
+  const expandedWindow = calculateVisibleLogWindow({
+    logs: windowLogs,
+    availableLines: 5,
+    scrollOffset: 0,
+    expandedLogIds: state.globalExpandedLogIds,
+    anchorLogId: jsonLog.id
+  });
+  assert.ok(expandedWindow.visibleLogs.some(log => log.id === state.globalSelectedLogId));
+
+  state = dashboardReducer(state, {
+    type: 'SET_LOG_SELECTION_RANGE',
+    anchorIndex: 0,
+    headIndex: 1,
+    anchorLogId: 'plain-0',
+    headLogId: jsonLog.id,
+    panel: 'global'
+  });
+  assert.strictEqual(state.globalSelectionAnchorLogId, 'plain-0');
+  assert.strictEqual(state.globalSelectedLogId, jsonLog.id);
+  console.log('✔ Filtered windows, displayed JSON text, and stable selected log identity verified');
+
+  console.log('\n=== ALL LOG SELECTION & INDICATOR TESTS PASSED (11/11) ===');
 }
 
 runLogSelectionTests().catch((err) => {

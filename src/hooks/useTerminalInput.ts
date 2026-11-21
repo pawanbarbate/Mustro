@@ -4,7 +4,8 @@ import { DashboardState, DashboardAction, FILTER_OPTIONS } from '../state/dashbo
 import { ViewportInfo, LogEntry } from '../types/index.js';
 import { ClickManagerContextValue } from '../components/common/ClickManager.js';
 import {
-  copyToClipboard,
+  copyToClipboardDetailed,
+  getCopyFeedbackMessage,
   formatLogEntry,
   formatServiceErrorSummary,
   formatAllErrors
@@ -12,7 +13,11 @@ import {
 import {
   prettyPrintJson,
   parseJsonLog,
-  formatJsonToHighlightedLines
+  formatJsonToHighlightedLines,
+  calculateVisibleLogWindow,
+  filterGlobalLogs,
+  getLogDisplayText,
+  getLogWindowAnchorId
 } from '../utils/logFormatter.js';
 
 interface UseTerminalInputProps {
@@ -45,6 +50,7 @@ export function useTerminalInput({
     charIdx: number;
     textCol: number;
     msgLen: number;
+    logId: string | number;
     panel: 'service' | 'global';
   } | null>(null);
 
@@ -61,88 +67,110 @@ export function useTerminalInput({
   onSwitchConfigRef.current = onSwitchConfig;
 
   useInput((input, key) => {
-    const getActiveLogList = (): LogEntry[] => {
+    const getLogWindow = (panel: 'service' | 'global') => {
       const curState = stateRef.current;
-      if (curState.activePanel === 'globalLogs') {
-        if (curState.searchQuery.trim() || curState.filterIndex > 0) {
-          const activeFilter = curState.filterOptions[curState.filterIndex] || 'All Services';
-          return curState.globalLogs.filter(l => {
-            if (activeFilter !== 'All Services' && l.service.toLowerCase() !== activeFilter.toLowerCase()) {
-              return false;
-            }
-            if (curState.searchQuery.trim()) {
-              const q = curState.searchQuery.toLowerCase();
-              return l.message.toLowerCase().includes(q) || l.service.toLowerCase().includes(q);
-            }
-            return true;
-          });
-        }
-        return curState.globalLogs;
-      }
-      if (curState.activePanel === 'serviceLogs') {
-        const curSvc = curState.services[curState.selectedIndex];
-        if (!curSvc) return [];
-        return curState.activeTab === 'errors' ? (curSvc.errorLogs || []) : (curSvc.logs || []);
-      }
-      return [];
+      const logs = panel === 'global'
+        ? filterGlobalLogs(
+            curState.globalLogs,
+            curState.searchQuery,
+            curState.filterOptions[curState.filterIndex] || 'All Services'
+          )
+        : (() => {
+            const service = curState.services[curState.selectedIndex];
+            return service
+              ? (curState.activeTab === 'errors' ? service.errorLogs || [] : service.logs || [])
+              : [];
+          })();
+      const isMaximized = curState.maximizedPanel === (panel === 'service' ? 'serviceLogs' : 'globalLogs');
+      const isNarrow = viewport.width < 72 && curState.maximizedPanel === 'none';
+      const panelHeight = isMaximized
+        ? viewport.contentHeight
+        : isNarrow
+          ? viewport.contentHeight - 1
+          : panel === 'service'
+            ? viewport.detailPanelHeight
+            : viewport.globalLogsPanelHeight;
+      const overhead = panel === 'global'
+        ? 4
+        : !isMaximized && !isNarrow && viewport.isUltraCompactHeight ? 5 : 7;
+      const availableLines = Math.max(panel === 'global' ? 2 : 1, panelHeight - overhead);
+      const expandedLogIds = panel === 'service' ? curState.serviceExpandedLogIds : curState.globalExpandedLogIds;
+      const selectedLogId = panel === 'service' ? curState.serviceSelectedLogId : curState.globalSelectedLogId;
+      const selectionAnchorLogId = panel === 'service' ? curState.serviceSelectionAnchorLogId : curState.globalSelectionAnchorLogId;
+      const anchorLogId = getLogWindowAnchorId(logs, selectedLogId, expandedLogIds, selectionAnchorLogId);
+      return calculateVisibleLogWindow({
+        logs,
+        availableLines,
+        scrollOffset: panel === 'service' ? curState.serviceLogScroll : curState.globalLogScroll,
+        expandedLogIds,
+        isWrapMode: curState.isWrapMode,
+        anchorLogId
+      });
     };
 
     const getActiveExpandedLog = (panel: 'service' | 'global'): LogEntry | null => {
       const curState = stateRef.current;
-      if (panel === 'service') {
-        const curSvc = curState.services[curState.selectedIndex];
-        if (!curSvc) return null;
-        const allLogs = curState.activeTab === 'errors' ? (curSvc.errorLogs || []) : (curSvc.logs || []);
-        const expId = Object.keys(curState.serviceExpandedLogIds).find(k => curState.serviceExpandedLogIds[k]);
-        return expId ? allLogs.find(l => String(l.id) === String(expId)) || null : null;
-      } else {
-        const allLogs = getActiveLogList();
-        const expId = Object.keys(curState.globalExpandedLogIds).find(k => curState.globalExpandedLogIds[k]);
-        return expId ? allLogs.find(l => String(l.id) === String(expId)) || null : null;
-      }
+      const selectedLogId = panel === 'service' ? curState.serviceSelectedLogId : curState.globalSelectedLogId;
+      const expandedLogIds = panel === 'service' ? curState.serviceExpandedLogIds : curState.globalExpandedLogIds;
+      const visibleLogs = getLogWindow(panel).visibleLogs;
+      const selectedIndex = panel === 'service' ? curState.serviceSelectedLogIndex : curState.globalSelectedLogIndex;
+      const selectedLog = selectedLogId !== null
+        ? visibleLogs.find(log => String(log.id) === String(selectedLogId))
+        : visibleLogs[selectedIndex];
+      return selectedLog && expandedLogIds[selectedLog.id] ? selectedLog : null;
     };
 
     const getJsonScrollBounds = (panel: 'service' | 'global', log: LogEntry) => {
       const jsonRes = parseJsonLog(log.message);
       if (!jsonRes.isJson || !jsonRes.parsed) return { maxScroll: 0, maxJsonLines: 1, totalLines: 0 };
       const fullLines = formatJsonToHighlightedLines(jsonRes.parsed);
-      const isService = panel === 'service';
-      const isMax = stateRef.current.maximizedPanel === (isService ? 'serviceLogs' : 'globalLogs');
-      const panelHeight = isMax 
-        ? viewport.contentHeight 
-        : (isService ? viewport.detailPanelHeight : viewport.globalLogsPanelHeight);
-      const overhead = isService ? (viewport.isUltraCompactHeight ? 2 : 4) : 4;
-      const availableLines = Math.max(2, panelHeight - overhead);
-      const maxJsonLines = Math.max(1, availableLines - 1);
+      const maxJsonLines = getLogWindow(panel).maxJsonLines;
       const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
       return { maxScroll, maxJsonLines, totalLines: fullLines.length };
     };
 
-    const getVisibleLogsSlice = (): LogEntry[] => {
-      const curState = stateRef.current;
-      const all = getActiveLogList();
-      const maxLogs = curState.activePanel === 'globalLogs'
-        ? (viewport.maxGlobalLogs || 6)
-        : (viewport.maxServiceLogs || 6);
-      const scroll = curState.activePanel === 'globalLogs'
-        ? curState.globalLogScroll
-        : curState.serviceLogScroll;
-      const total = all.length;
-      const maxScroll = Math.max(0, total - maxLogs);
-      const eff = Math.max(0, Math.min(scroll, maxScroll));
-      const endIdx = total - eff;
-      const startIdx = Math.max(0, endIdx - maxLogs);
-      return all.slice(startIdx, endIdx);
+    const getJsonScrollOffset = (panel: 'service' | 'global', log: LogEntry) => panel === 'service'
+      ? stateRef.current.serviceJsonLineScrollById[log.id] || 0
+      : stateRef.current.globalJsonLineScroll;
+
+    const getVisibleLogsSlice = (requestedPanel?: 'service' | 'global'): LogEntry[] => {
+      const panel = requestedPanel || (stateRef.current.activePanel === 'globalLogs' ? 'global' : 'service');
+      return getLogWindow(panel).visibleLogs;
     };
 
-    const getSelectedLog = (specificIdx?: number): LogEntry | null => {
-      const visible = getVisibleLogsSlice();
+    const getSelectedLog = (specificIdx?: number, requestedPanel?: 'service' | 'global'): LogEntry | null => {
+      const panel = requestedPanel || (stateRef.current.activePanel === 'globalLogs' ? 'global' : 'service');
+      const visible = getVisibleLogsSlice(panel);
       const currentIdx = specificIdx !== undefined
         ? specificIdx
-        : (stateRef.current.activePanel === 'globalLogs'
+        : (panel === 'global'
             ? stateRef.current.globalSelectedLogIndex
             : stateRef.current.serviceSelectedLogIndex);
+      const selectedId = panel === 'global' ? stateRef.current.globalSelectedLogId : stateRef.current.serviceSelectedLogId;
+      if (specificIdx === undefined && selectedId !== null) {
+        return visible.find(log => String(log.id) === String(selectedId)) || null;
+      }
       return visible[currentIdx] || visible[visible.length - 1] || null;
+    };
+
+    const getSelectedVisibleIndex = (panel: 'service' | 'global') => {
+      const visible = getVisibleLogsSlice(panel);
+      const selectedId = panel === 'global' ? stateRef.current.globalSelectedLogId : stateRef.current.serviceSelectedLogId;
+      const byId = selectedId === null ? -1 : visible.findIndex(log => String(log.id) === String(selectedId));
+      const fallback = panel === 'global' ? stateRef.current.globalSelectedLogIndex : stateRef.current.serviceSelectedLogIndex;
+      return byId >= 0 ? byId : Math.min(fallback, Math.max(0, visible.length - 1));
+    };
+
+    const getMessageDisplayText = (log: LogEntry, panel: 'service' | 'global') => {
+      const curState = stateRef.current;
+      const panelWidth = curState.maximizedPanel === (panel === 'service' ? 'serviceLogs' : 'globalLogs') || viewport.width < 72
+        ? viewport.width
+        : viewport.rightPanelWidth;
+      const maxMessageLength = Math.max(12, Math.max(20, panelWidth - 4) - 22);
+      if (panel === 'service' && curState.activeTab === 'errors') {
+        return curState.isWrapMode ? log.message : log.message.slice(0, maxMessageLength);
+      }
+      return getLogDisplayText(log, maxMessageLength, curState.isWrapMode);
     };
 
     // -------------------------------------------------------------
@@ -187,8 +215,8 @@ export function useTerminalInput({
               const rowIdx = parseInt(matchSvc[1]!, 10);
               const textStart = rowRegion.textStartX || 19;
               const textCol = rowRegion.minX + textStart;
-              const curLog = getSelectedLog(rowIdx);
-              const msgLen = curLog ? curLog.message.length : 120;
+              const curLog = getSelectedLog(rowIdx, 'service');
+              const msgLen = curLog ? getMessageDisplayText(curLog, 'service').length : 120;
               const charIdx = Math.max(0, Math.min(msgLen, mouseX - textCol));
               dragStartRef.current = {
                 x: mouseX,
@@ -197,14 +225,15 @@ export function useTerminalInput({
                 charIdx,
                 textCol,
                 msgLen,
+                logId: curLog?.id ?? '',
                 panel: 'service'
               };
             } else if (matchGlb) {
               const rowIdx = parseInt(matchGlb[1]!, 10);
               const textStart = rowRegion.textStartX || 23;
               const textCol = rowRegion.minX + textStart;
-              const curLog = getSelectedLog(rowIdx);
-              const msgLen = curLog ? curLog.message.length : 120;
+              const curLog = getSelectedLog(rowIdx, 'global');
+              const msgLen = curLog ? getMessageDisplayText(curLog, 'global').length : 120;
               const charIdx = Math.max(0, Math.min(msgLen, mouseX - textCol));
               dragStartRef.current = {
                 x: mouseX,
@@ -213,6 +242,7 @@ export function useTerminalInput({
                 charIdx,
                 textCol,
                 msgLen,
+                logId: curLog?.id ?? '',
                 panel: 'global'
               };
             }
@@ -247,27 +277,32 @@ export function useTerminalInput({
             }
             const matchSvc = curRegion?.id?.match(/^service-log-row-(\d+)$/);
             const matchGlb = curRegion?.id?.match(/^global-log-row-(\d+)$/);
-            const curRowIdx = matchSvc ? parseInt(matchSvc[1]!, 10) : (matchGlb ? parseInt(matchGlb[1]!, 10) : drag.rowIdx);
+            const rowMatch = drag.panel === 'service' ? matchSvc : matchGlb;
+            const curRowIdx = rowMatch ? parseInt(rowMatch[1]!, 10) : drag.rowIdx;
 
             if (curRowIdx === drag.rowIdx) {
               // Horizontal drag on the same log line -> Partial Character Selection!
-              const curChar = Math.max(0, Math.min(drag.msgLen, mouseX - drag.textCol));
+              const curChar = Math.max(0, Math.min(Math.max(0, drag.msgLen - 1), mouseX - drag.textCol));
               const startChar = Math.min(drag.charIdx, curChar);
-              const endChar = Math.max(drag.charIdx, curChar);
+              const endChar = Math.min(drag.msgLen, Math.max(drag.charIdx, curChar) + 1);
               if (endChar > startChar) {
                 dispatch({
                   type: 'SET_CHAR_SELECTION_RANGE',
                   start: startChar,
                   end: endChar,
+                  logId: drag.logId,
                   panel: drag.panel
                 });
               }
             } else {
               // Vertical drag across different lines -> Multi-line Range Selection!
+              const visible = getVisibleLogsSlice(drag.panel);
               dispatch({
                 type: 'SET_LOG_SELECTION_RANGE',
                 anchorIndex: drag.rowIdx,
                 headIndex: curRowIdx,
+                anchorLogId: visible[drag.rowIdx]?.id,
+                headLogId: visible[curRowIdx]?.id,
                 panel: drag.panel
               });
             }
@@ -283,7 +318,8 @@ export function useTerminalInput({
         const isWheelUp = baseButton === 64;
         if (isWheelUp) {
           const now = Date.now();
-          const isLeftPanel = state.maximizedPanel === 'services' || (state.maximizedPanel === 'none' && mouseX <= viewport.leftPanelWidth + 1);
+          const isLeftPanel = state.maximizedPanel === 'services'
+            || (state.maximizedPanel === 'none' && (viewport.width < 72 ? state.narrowTab === 'services' : mouseX <= viewport.leftPanelWidth + 1));
           if (isLeftPanel) {
             if (now - lastServiceNavTimeRef.current >= 75) {
               lastServiceNavTimeRef.current = now;
@@ -293,12 +329,14 @@ export function useTerminalInput({
             if (now - lastLogScrollTimeRef.current >= 30) {
               lastLogScrollTimeRef.current = now;
               const detailEndRow = 1 + viewport.detailPanelHeight;
-              const isDetailTarget = state.maximizedPanel === 'serviceLogs' || (state.maximizedPanel === 'none' && mouseY <= detailEndRow);
+              const isDetailTarget = state.maximizedPanel === 'serviceLogs'
+                || (state.maximizedPanel === 'none' && (viewport.width < 72 ? state.narrowTab === 'detail' : mouseY <= detailEndRow));
               if (isDetailTarget) {
                 const expLog = getActiveExpandedLog('service');
                 const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
-                if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll > 0) {
-                  dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'service' });
+                const jsonOffset = expLog ? state.serviceJsonLineScrollById[expLog.id] || 0 : 0;
+                if (expLog && bounds.maxScroll > 0 && jsonOffset > 0) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
                 } else {
                   const totalLogs = state.services[state.selectedIndex]?.logs?.length || 0;
                   const maxScroll = Math.max(0, totalLogs - (viewport.maxServiceLogs || 6));
@@ -307,8 +345,8 @@ export function useTerminalInput({
               } else {
                 const expLog = getActiveExpandedLog('global');
                 const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
-                if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll > 0) {
-                  dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'global' });
+                if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) > 0) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
                 } else {
                   const totalLogs = state.globalLogs.length;
                   const maxScroll = Math.max(0, totalLogs - (viewport.maxGlobalLogs || 6));
@@ -323,7 +361,8 @@ export function useTerminalInput({
         const isWheelDown = baseButton === 65;
         if (isWheelDown) {
           const now = Date.now();
-          const isLeftPanel = state.maximizedPanel === 'services' || (state.maximizedPanel === 'none' && mouseX <= viewport.leftPanelWidth + 1);
+          const isLeftPanel = state.maximizedPanel === 'services'
+            || (state.maximizedPanel === 'none' && (viewport.width < 72 ? state.narrowTab === 'services' : mouseX <= viewport.leftPanelWidth + 1));
           if (isLeftPanel) {
             if (now - lastServiceNavTimeRef.current >= 75) {
               lastServiceNavTimeRef.current = now;
@@ -333,12 +372,14 @@ export function useTerminalInput({
             if (now - lastLogScrollTimeRef.current >= 30) {
               lastLogScrollTimeRef.current = now;
               const detailEndRow = 1 + viewport.detailPanelHeight;
-              const isDetailTarget = state.maximizedPanel === 'serviceLogs' || (state.maximizedPanel === 'none' && mouseY <= detailEndRow);
+              const isDetailTarget = state.maximizedPanel === 'serviceLogs'
+                || (state.maximizedPanel === 'none' && (viewport.width < 72 ? state.narrowTab === 'detail' : mouseY <= detailEndRow));
               if (isDetailTarget) {
                 const expLog = getActiveExpandedLog('service');
                 const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
-                if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
-                  dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'service' });
+                const jsonOffset = expLog ? state.serviceJsonLineScrollById[expLog.id] || 0 : 0;
+                if (expLog && bounds.maxScroll > 0 && jsonOffset < bounds.maxScroll) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
                 } else {
                   const totalLogs = state.services[state.selectedIndex]?.logs?.length || 0;
                   const maxScroll = Math.max(0, totalLogs - (viewport.maxServiceLogs || 6));
@@ -347,8 +388,8 @@ export function useTerminalInput({
               } else {
                 const expLog = getActiveExpandedLog('global');
                 const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
-                if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
-                  dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'global' });
+                if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) < bounds.maxScroll) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
                 } else {
                   const totalLogs = state.globalLogs.length;
                   const maxScroll = Math.max(0, totalLogs - (viewport.maxGlobalLogs || 6));
@@ -482,16 +523,16 @@ export function useTerminalInput({
       if (state.activePanel === 'globalLogs') {
         const expLog = getActiveExpandedLog('global');
         const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
-        if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll > 0) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: -5, maxScroll: bounds.maxScroll, panel: 'global' });
+        if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -5, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
         } else {
           dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 4, maxScroll: getGlobalMaxScroll() });
         }
       } else {
         const expLog = getActiveExpandedLog('service');
         const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
-        if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll > 0) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: -5, maxScroll: bounds.maxScroll, panel: 'service' });
+        if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('service', expLog) > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -5, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
         } else {
           dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 4, maxScroll: getServiceMaxScroll() });
         }
@@ -503,16 +544,16 @@ export function useTerminalInput({
       if (state.activePanel === 'globalLogs') {
         const expLog = getActiveExpandedLog('global');
         const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
-        if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: bounds.maxScroll, panel: 'global' });
+        if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
         } else {
           dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -4, maxScroll: getGlobalMaxScroll() });
         }
       } else {
         const expLog = getActiveExpandedLog('service');
         const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
-        if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: bounds.maxScroll, panel: 'service' });
+        if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('service', expLog) < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
         } else {
           dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -4, maxScroll: getServiceMaxScroll() });
         }
@@ -523,16 +564,16 @@ export function useTerminalInput({
     if (key.home) {
       if (state.activePanel === 'globalLogs') {
         const expLog = getActiveExpandedLog('global');
-        if (expLog && state.globalJsonLineScroll > 0) {
-          dispatch({ type: 'RESET_JSON_LINE_SCROLL', panel: 'global' });
+        if (expLog && getJsonScrollOffset('global', expLog) > 0) {
+          dispatch({ type: 'RESET_JSON_LINE_SCROLL', logId: expLog.id, panel: 'global' });
         } else {
           const maxScroll = getGlobalMaxScroll();
           dispatch({ type: 'SET_GLOBAL_LOG_SCROLL', value: maxScroll, maxScroll });
         }
       } else {
         const expLog = getActiveExpandedLog('service');
-        if (expLog && state.serviceJsonLineScroll > 0) {
-          dispatch({ type: 'RESET_JSON_LINE_SCROLL', panel: 'service' });
+        if (expLog && getJsonScrollOffset('service', expLog) > 0) {
+          dispatch({ type: 'RESET_JSON_LINE_SCROLL', logId: expLog.id, panel: 'service' });
         } else {
           const maxScroll = getServiceMaxScroll();
           dispatch({ type: 'SET_SERVICE_LOG_SCROLL', value: maxScroll, maxScroll });
@@ -545,16 +586,16 @@ export function useTerminalInput({
       if (state.activePanel === 'globalLogs') {
         const expLog = getActiveExpandedLog('global');
         const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
-        if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: bounds.maxScroll, maxScroll: bounds.maxScroll, panel: 'global' });
+        if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: bounds.maxScroll, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
         } else {
           dispatch({ type: 'SET_GLOBAL_LOG_SCROLL', value: 0 });
         }
       } else {
         const expLog = getActiveExpandedLog('service');
         const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
-        if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: bounds.maxScroll, maxScroll: bounds.maxScroll, panel: 'service' });
+        if (expLog && bounds.maxScroll > 0 && getJsonScrollOffset('service', expLog) < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: bounds.maxScroll, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
         } else {
           dispatch({ type: 'SET_SERVICE_LOG_SCROLL', value: 0 });
         }
@@ -572,14 +613,16 @@ export function useTerminalInput({
         const expLog = getActiveExpandedLog('service');
         const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
 
-        if (!isShift && expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll > 0) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'service' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && getJsonScrollOffset('service', expLog) > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
-          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: -1, maxIndex: maxIdx, panel: 'service' });
-        } else if (state.serviceSelectedLogIndex > 0) {
-          dispatch({ type: 'SELECT_LOG_ROW', index: state.serviceSelectedLogIndex - 1, panel: 'service' });
+          const nextIdx = Math.max(0, Math.min(maxIdx, getSelectedVisibleIndex('service') - 1));
+          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: nextIdx - getSelectedVisibleIndex('service'), maxIndex: maxIdx, headIndex: nextIdx, anchorLogId: visible[getSelectedVisibleIndex('service')]?.id, headLogId: visible[nextIdx]?.id, panel: 'service' });
+        } else if (getSelectedVisibleIndex('service') > 0) {
+          const nextIdx = getSelectedVisibleIndex('service') - 1;
+          dispatch({ type: 'SELECT_LOG_ROW', index: nextIdx, logId: getVisibleLogsSlice('service')[nextIdx]?.id, panel: 'service' });
         } else {
           dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll: getServiceMaxScroll() });
         }
@@ -587,14 +630,16 @@ export function useTerminalInput({
         const expLog = getActiveExpandedLog('global');
         const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
 
-        if (!isShift && expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll > 0) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'global' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
-          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: -1, maxIndex: maxIdx, panel: 'global' });
-        } else if (state.globalSelectedLogIndex > 0) {
-          dispatch({ type: 'SELECT_LOG_ROW', index: state.globalSelectedLogIndex - 1, panel: 'global' });
+          const nextIdx = Math.max(0, Math.min(maxIdx, getSelectedVisibleIndex('global') - 1));
+          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: nextIdx - getSelectedVisibleIndex('global'), maxIndex: maxIdx, headIndex: nextIdx, anchorLogId: visible[getSelectedVisibleIndex('global')]?.id, headLogId: visible[nextIdx]?.id, panel: 'global' });
+        } else if (getSelectedVisibleIndex('global') > 0) {
+          const nextIdx = getSelectedVisibleIndex('global') - 1;
+          dispatch({ type: 'SELECT_LOG_ROW', index: nextIdx, logId: getVisibleLogsSlice('global')[nextIdx]?.id, panel: 'global' });
         } else {
           dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 1, maxScroll: getGlobalMaxScroll() });
         }
@@ -610,17 +655,19 @@ export function useTerminalInput({
         const expLog = getActiveExpandedLog('service');
         const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
 
-        if (!isShift && expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'service' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && getJsonScrollOffset('service', expLog) < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'service' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
-          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: 1, maxIndex: maxIdx, panel: 'service' });
+          const nextIdx = Math.max(0, Math.min(maxIdx, getSelectedVisibleIndex('service') + 1));
+          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: nextIdx - getSelectedVisibleIndex('service'), maxIndex: maxIdx, headIndex: nextIdx, anchorLogId: visible[getSelectedVisibleIndex('service')]?.id, headLogId: visible[nextIdx]?.id, panel: 'service' });
         } else {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
-          if (state.serviceSelectedLogIndex < maxIdx) {
-            dispatch({ type: 'SELECT_LOG_ROW', index: state.serviceSelectedLogIndex + 1, panel: 'service' });
+          if (getSelectedVisibleIndex('service') < maxIdx) {
+            const nextIdx = getSelectedVisibleIndex('service') + 1;
+            dispatch({ type: 'SELECT_LOG_ROW', index: nextIdx, logId: visible[nextIdx]?.id, panel: 'service' });
           } else {
             dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -1, maxScroll: getServiceMaxScroll() });
           }
@@ -629,17 +676,19 @@ export function useTerminalInput({
         const expLog = getActiveExpandedLog('global');
         const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
 
-        if (!isShift && expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'global' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && getJsonScrollOffset('global', expLog) < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, logId: expLog.id, panel: 'global' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
-          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: 1, maxIndex: maxIdx, panel: 'global' });
+          const nextIdx = Math.max(0, Math.min(maxIdx, getSelectedVisibleIndex('global') + 1));
+          dispatch({ type: 'EXTEND_LOG_SELECTION', delta: nextIdx - getSelectedVisibleIndex('global'), maxIndex: maxIdx, headIndex: nextIdx, anchorLogId: visible[getSelectedVisibleIndex('global')]?.id, headLogId: visible[nextIdx]?.id, panel: 'global' });
         } else {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
-          if (state.globalSelectedLogIndex < maxIdx) {
-            dispatch({ type: 'SELECT_LOG_ROW', index: state.globalSelectedLogIndex + 1, panel: 'global' });
+          if (getSelectedVisibleIndex('global') < maxIdx) {
+            const nextIdx = getSelectedVisibleIndex('global') + 1;
+            dispatch({ type: 'SELECT_LOG_ROW', index: nextIdx, logId: visible[nextIdx]?.id, panel: 'global' });
           } else {
             dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -1, maxScroll: getGlobalMaxScroll() });
           }
@@ -656,8 +705,8 @@ export function useTerminalInput({
     if (key.leftArrow) {
       if (key.shift && (state.activePanel === 'serviceLogs' || state.activePanel === 'globalLogs')) {
         const curLog = getSelectedLog();
-        const maxLen = curLog ? curLog.message.length : 100;
         const panel = state.activePanel === 'serviceLogs' ? 'service' : 'global';
+        const maxLen = curLog ? getMessageDisplayText(curLog, panel).length : 100;
         dispatch({ type: 'EXTEND_CHAR_SELECTION', delta: -1, maxLen, panel });
         return;
       }
@@ -669,8 +718,8 @@ export function useTerminalInput({
     if (key.rightArrow) {
       if (key.shift && (state.activePanel === 'serviceLogs' || state.activePanel === 'globalLogs')) {
         const curLog = getSelectedLog();
-        const maxLen = curLog ? curLog.message.length : 100;
         const panel = state.activePanel === 'serviceLogs' ? 'service' : 'global';
+        const maxLen = curLog ? getMessageDisplayText(curLog, panel).length : 100;
         dispatch({ type: 'EXTEND_CHAR_SELECTION', delta: 1, maxLen, panel });
         return;
       }
@@ -694,9 +743,10 @@ export function useTerminalInput({
         const targetLog = getSelectedLog();
         if (targetLog) {
           const rawStream = targetLog.raw || targetLog.message;
-          copyToClipboard(rawStream);
-          dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
-          dispatch({ type: 'SHOW_TOAST', message: '✔ Copied raw stdout stream to clipboard!' });
+          copyToClipboardDetailed(rawStream).then(res => {
+            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, '✔ Copied raw stdout stream to clipboard!') });
+          });
         } else {
           dispatch({ type: 'SHOW_TOAST', message: 'ℹ No log line selected to copy' });
         }
@@ -753,10 +803,18 @@ export function useTerminalInput({
         if (targetLog) {
           const jsonRes = parseJsonLog(targetLog.message);
           if (jsonRes.isJson) {
+            const panel = state.activePanel === 'serviceLogs' ? 'service' : 'global';
+            const selectedIndex = getSelectedVisibleIndex(panel);
+            dispatch({
+              type: 'SELECT_LOG_ROW',
+              index: selectedIndex,
+              logId: targetLog.id,
+              panel
+            });
             dispatch({ 
               type: 'TOGGLE_LOG_EXPANSION', 
               logId: targetLog.id, 
-              panel: state.activePanel === 'serviceLogs' ? 'service' : 'global' 
+              panel
             });
             return;
           }
@@ -769,9 +827,10 @@ export function useTerminalInput({
       const curSvc = state.services[state.selectedIndex];
       if (curSvc) {
         const text = formatAllErrors(curSvc);
-        copyToClipboard(text);
         const errCount = curSvc.errorLogs?.length || (curSvc.lastError ? 1 : 0);
-        dispatch({ type: 'SHOW_TOAST', message: `✔ Copied all errors (${errCount}) for "${curSvc.name}"` });
+        copyToClipboardDetailed(text).then(res => {
+          dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied all errors (${errCount}) for "${curSvc.name}"`) });
+        });
       }
       return;
     }
@@ -783,45 +842,56 @@ export function useTerminalInput({
       if (state.activePanel === 'services') {
         if (curSvc) {
           const text = formatServiceErrorSummary(curSvc);
-          copyToClipboard(text);
-          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied service summary for "${curSvc.name}"` });
+          copyToClipboardDetailed(text).then(res => {
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied service summary for "${curSvc.name}"`) });
+          });
         }
       } else {
         const panel = state.activePanel === 'serviceLogs' ? 'service' : 'global';
         const charSel = panel === 'service' ? state.serviceCharSelection : state.globalCharSelection;
-        const anchor = panel === 'service' ? state.serviceSelectionAnchor : state.globalSelectionAnchor;
-        const currentIdx = panel === 'service' ? state.serviceSelectedLogIndex : state.globalSelectedLogIndex;
+        const anchorId = panel === 'service' ? state.serviceSelectionAnchorLogId : state.globalSelectionAnchorLogId;
+        const anchorIndex = panel === 'service' ? state.serviceSelectionAnchor : state.globalSelectionAnchor;
+        const visible = getVisibleLogsSlice(panel);
+        const anchorById = anchorId === null ? -1 : visible.findIndex(log => String(log.id) === String(anchorId));
+        const anchor = anchorId !== null ? anchorById : anchorIndex;
         const targetLog = getSelectedLog();
+        const currentIdx = targetLog
+          ? visible.findIndex(log => String(log.id) === String(targetLog.id))
+          : -1;
 
         if (charSel && targetLog) {
-          const s = Math.max(0, Math.min(targetLog.message.length, charSel.start));
-          const e = Math.max(s, Math.min(targetLog.message.length, charSel.end));
-          const snippet = targetLog.message.slice(s, e);
-          copyToClipboard(snippet);
-          dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
-          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied ${snippet.length} selected characters to clipboard!` });
-        } else if (anchor !== null && anchor !== currentIdx) {
-          const visible = getVisibleLogsSlice();
+          const displayedMessage = getMessageDisplayText(targetLog, panel);
+          const s = Math.max(0, Math.min(displayedMessage.length, charSel.start));
+          const e = Math.max(s, Math.min(displayedMessage.length, charSel.end));
+          const snippet = displayedMessage.slice(s, e);
+          copyToClipboardDetailed(snippet).then(res => {
+            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied ${snippet.length} selected characters to clipboard!`) });
+          });
+        } else if (anchor !== null && anchor >= 0 && currentIdx >= 0 && anchor !== currentIdx) {
           const rMin = Math.min(anchor, currentIdx);
           const rMax = Math.max(anchor, currentIdx);
           const selectedEntries = visible.slice(rMin, rMax + 1);
-          const formattedText = selectedEntries.map(l => formatLogEntry(l, curSvc?.name)).join('\n');
-          copyToClipboard(formattedText);
-          dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog?.id || null });
-          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied ${selectedEntries.length} selected log lines to clipboard!` });
+          const formattedText = selectedEntries.map(l => formatLogEntry(l, panel === 'service' ? curSvc?.name : undefined)).join('\n');
+          copyToClipboardDetailed(formattedText).then(res => {
+            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog?.id || null });
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied ${selectedEntries.length} selected log lines to clipboard!`) });
+          });
         } else if (targetLog) {
           const jsonRes = parseJsonLog(targetLog.message);
           const isExpanded = !!(jsonRes.isJson && (panel === 'service' ? state.serviceExpandedLogIds[targetLog.id] : state.globalExpandedLogIds[targetLog.id]));
           if (isExpanded && jsonRes.parsed) {
             const prettyText = prettyPrintJson(targetLog.message);
-            copyToClipboard(prettyText);
-            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
-            dispatch({ type: 'SHOW_TOAST', message: '✔ Copied formatted JSON to clipboard!' });
+            copyToClipboardDetailed(prettyText).then(res => {
+              dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+              dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, '✔ Copied formatted JSON to clipboard!') });
+            });
           } else {
-            const logText = formatLogEntry(targetLog, curSvc?.name);
-            copyToClipboard(logText);
-            dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
-            dispatch({ type: 'SHOW_TOAST', message: '✔ Copied selected log line to clipboard!' });
+            const logText = formatLogEntry(targetLog, panel === 'service' ? curSvc?.name : undefined);
+            copyToClipboardDetailed(logText).then(res => {
+              dispatch({ type: 'SET_COPIED_FLASH', logId: targetLog.id });
+              dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, '✔ Copied selected log line to clipboard!') });
+            });
           }
         } else {
           dispatch({ type: 'SHOW_TOAST', message: 'ℹ No log selected to copy' });
@@ -831,4 +901,3 @@ export function useTerminalInput({
     }
   });
 }
-

@@ -15,12 +15,13 @@ import { theme } from './theme/theme.js';
 import { DevPulseConfig } from './types/config.js';
 import { LogEntry } from './types/index.js';
 import {
-  copyToClipboard,
+  copyToClipboardDetailed,
+  getCopyFeedbackMessage,
   formatLogEntry,
   formatServiceErrorSummary,
   formatAllErrors
 } from './utils/clipboard.js';
-import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines } from './utils/logFormatter.js';
+import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines, filterGlobalLogs, calculateVisibleLogWindow, getLogWindowAnchorId, getLogDisplayText } from './utils/logFormatter.js';
 
 export interface DevPulseProps {
   config?: DevPulseConfig;
@@ -66,6 +67,121 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
 
   const selectedService = state.services[state.selectedIndex] || state.services[0];
   const activeFilter = state.filterOptions[state.filterIndex] || 'All Services';
+  const handleSelectServiceLog = (index: number, isShift?: boolean, logId?: string | number) => {
+    if (isShift) {
+      const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
+      const visibleLogs = getVisiblePanelLogs('service').visibleLogs;
+      dispatch({
+        type: 'SET_LOG_SELECTION_RANGE',
+        anchorIndex: anchor,
+        headIndex: index,
+        anchorLogId: state.serviceSelectionAnchorLogId ?? state.serviceSelectedLogId ?? visibleLogs[anchor]?.id,
+        headLogId: logId,
+        panel: 'service'
+      });
+    } else {
+      dispatch({ type: 'SELECT_LOG_ROW', index, logId, panel: 'service' });
+    }
+  };
+  const handleSelectGlobalLog = (index: number, isShift?: boolean, logId?: string | number) => {
+    if (isShift) {
+      const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
+      const visibleLogs = getVisiblePanelLogs('global').visibleLogs;
+      dispatch({
+        type: 'SET_LOG_SELECTION_RANGE',
+        anchorIndex: anchor,
+        headIndex: index,
+        anchorLogId: state.globalSelectionAnchorLogId ?? state.globalSelectedLogId ?? visibleLogs[anchor]?.id,
+        headLogId: logId,
+        panel: 'global'
+      });
+    } else {
+      dispatch({ type: 'SELECT_LOG_ROW', index, logId, panel: 'global' });
+    }
+  };
+  const getVisiblePanelLogs = (panel: 'service' | 'global') => {
+    const logs = panel === 'global'
+      ? filterGlobalLogs(state.globalLogs, state.searchQuery, activeFilter)
+      : selectedService
+        ? (state.activeTab === 'errors' ? selectedService.errorLogs || [] : selectedService.logs || [])
+        : [];
+    const isMaximized = state.maximizedPanel === (panel === 'service' ? 'serviceLogs' : 'globalLogs');
+    const isNarrow = viewport.width < 72 && state.maximizedPanel === 'none';
+    const panelHeight = isMaximized
+      ? viewport.contentHeight
+      : isNarrow
+        ? viewport.contentHeight - 1
+        : panel === 'service'
+          ? viewport.detailPanelHeight
+          : viewport.globalLogsPanelHeight;
+    const overhead = panel === 'global'
+      ? 4
+      : !isMaximized && !isNarrow && viewport.isUltraCompactHeight ? 5 : 7;
+    const availableLines = Math.max(panel === 'global' ? 2 : 1, panelHeight - overhead);
+    const expandedLogIds = panel === 'service' ? state.serviceExpandedLogIds : state.globalExpandedLogIds;
+    const selectedLogId = panel === 'service' ? state.serviceSelectedLogId : state.globalSelectedLogId;
+    const selectionAnchorLogId = panel === 'service' ? state.serviceSelectionAnchorLogId : state.globalSelectionAnchorLogId;
+    const anchorLogId = getLogWindowAnchorId(logs, selectedLogId, expandedLogIds, selectionAnchorLogId);
+    return calculateVisibleLogWindow({
+      logs,
+      availableLines,
+      scrollOffset: panel === 'service' ? state.serviceLogScroll : state.globalLogScroll,
+      expandedLogIds,
+      isWrapMode: state.isWrapMode,
+      anchorLogId
+    });
+  };
+  const copyPanelSelection = (panel: 'service' | 'global'): boolean => {
+    const charSelection = panel === 'service' ? state.serviceCharSelection : state.globalCharSelection;
+    const selectionAnchor = panel === 'service' ? state.serviceSelectionAnchorLogId : state.globalSelectionAnchorLogId;
+    const selectedLogId = panel === 'service' ? state.serviceSelectedLogId : state.globalSelectedLogId;
+    const visibleLogs = getVisiblePanelLogs(panel).visibleLogs;
+    const selectedLog = selectedLogId === null
+      ? undefined
+      : visibleLogs.find(log => String(log.id) === String(selectedLogId));
+
+    if (charSelection) {
+      if (!selectedLog) {
+        dispatch({ type: 'SHOW_TOAST', message: 'ℹ Selected text is no longer visible' });
+        return true;
+      }
+      const panelWidth = state.maximizedPanel === (panel === 'service' ? 'serviceLogs' : 'globalLogs') || viewport.width < 72
+        ? viewport.width
+        : viewport.rightPanelWidth;
+      const maxMessageLength = Math.max(12, Math.max(20, panelWidth - 4) - 22);
+      const displayMessage = panel === 'service' && state.activeTab === 'errors'
+        ? state.isWrapMode ? selectedLog.message : selectedLog.message.slice(0, maxMessageLength)
+        : getLogDisplayText(selectedLog, maxMessageLength, state.isWrapMode);
+      const start = Math.max(0, Math.min(displayMessage.length, charSelection.start));
+      const end = Math.max(start, Math.min(displayMessage.length, charSelection.end));
+      const text = displayMessage.slice(start, end);
+      copyToClipboardDetailed(text).then(result => {
+        dispatch({ type: 'SET_COPIED_FLASH', logId: selectedLog.id });
+        dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(result, `✔ Copied ${text.length} selected characters to clipboard!`) });
+      });
+      return true;
+    }
+
+    if (selectionAnchor !== null && selectedLogId !== null) {
+      const anchorIndex = visibleLogs.findIndex(log => String(log.id) === String(selectionAnchor));
+      const headIndex = visibleLogs.findIndex(log => String(log.id) === String(selectedLogId));
+      if (anchorIndex < 0 || headIndex < 0) {
+        dispatch({ type: 'SHOW_TOAST', message: 'ℹ Selected log range is no longer visible' });
+        return true;
+      }
+      if (anchorIndex === headIndex) return false;
+      const selectedEntries = visibleLogs.slice(Math.min(anchorIndex, headIndex), Math.max(anchorIndex, headIndex) + 1);
+      const serviceName = panel === 'service' ? selectedService?.name : undefined;
+      const text = selectedEntries.map(log => formatLogEntry(log, serviceName)).join('\n');
+      copyToClipboardDetailed(text).then(result => {
+        dispatch({ type: 'SET_COPIED_FLASH', logId: selectedLogId });
+        dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(result, `✔ Copied ${selectedEntries.length} selected log lines to clipboard!`) });
+      });
+      return true;
+    }
+
+    return false;
+  };
 
   // Dynamically derive honest system status for Header
   const runningCount = state.services.filter(s => s.status === 'running').length;
@@ -109,86 +225,111 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
 
   // Copy helpers
   const handleCopyCurrent = () => {
+    if (copyPanelSelection('service')) return;
     if (state.activeTab === 'errors' && selectedService) {
-      const errs = selectedService.errorLogs || [];
-      const err = errs[state.serviceSelectedLogIndex] || errs[errs.length - 1];
+      const errs = getVisiblePanelLogs('service').visibleLogs;
+      const err = errs.find(log => String(log.id) === String(state.serviceSelectedLogId))
+        || (state.serviceSelectedLogId === null ? errs[state.serviceSelectedLogIndex] : undefined);
       if (err) {
-        copyToClipboard(err.message);
-        dispatch({ type: 'SET_COPIED_FLASH', logId: err.id });
-        dispatch({ type: 'SHOW_TOAST', message: `✔ Copied error from "${selectedService.name}"` });
-      } else if (selectedService.lastError) {
-        copyToClipboard(selectedService.lastError);
-        dispatch({ type: 'SHOW_TOAST', message: `✔ Copied error from "${selectedService.name}"` });
+        copyToClipboardDetailed(err.message).then(res => {
+          dispatch({ type: 'SET_COPIED_FLASH', logId: err.id });
+          dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied error from "${selectedService.name}"`) });
+        });
+      } else if (state.serviceSelectedLogId === null && selectedService.lastError) {
+        copyToClipboardDetailed(selectedService.lastError).then(res => {
+          dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied error from "${selectedService.name}"`) });
+        });
+      } else if (state.serviceSelectedLogId !== null) {
+        dispatch({ type: 'SHOW_TOAST', message: `ℹ Selected error is not visible for "${selectedService.name}"` });
       } else {
         dispatch({ type: 'SHOW_TOAST', message: `ℹ No errors to copy for "${selectedService.name}"` });
       }
     } else if (selectedService) {
-      const logs = selectedService.logs || [];
-      const log = logs[state.serviceSelectedLogIndex] || logs[logs.length - 1];
+      const logs = getVisiblePanelLogs('service').visibleLogs;
+      const log = logs.find(entry => String(entry.id) === String(state.serviceSelectedLogId))
+        || (state.serviceSelectedLogId === null ? logs[state.serviceSelectedLogIndex] : undefined);
       if (log) {
         const jsonRes = parseJsonLog(log.message);
         const isExpanded = !!(jsonRes.isJson && (state.serviceExpandedLogIds[log.id] || state.isWrapMode));
         if (isExpanded && jsonRes.parsed) {
-          copyToClipboard(prettyPrintJson(log.message));
-          dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
-          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied formatted JSON from "${selectedService.name}"` });
+          copyToClipboardDetailed(prettyPrintJson(log.message)).then(res => {
+            dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied formatted JSON from "${selectedService.name}"`) });
+          });
         } else {
-          copyToClipboard(formatLogEntry(log, selectedService.name));
-          dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
-          dispatch({ type: 'SHOW_TOAST', message: `✔ Copied log from "${selectedService.name}"` });
+          copyToClipboardDetailed(formatLogEntry(log, selectedService.name)).then(res => {
+            dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied log from "${selectedService.name}"`) });
+          });
         }
       } else {
-        const text = formatServiceErrorSummary(selectedService);
-        copyToClipboard(text);
-        dispatch({ type: 'SHOW_TOAST', message: `✔ Copied summary for "${selectedService.name}"` });
+        if (state.serviceSelectedLogId !== null) {
+          dispatch({ type: 'SHOW_TOAST', message: `ℹ Selected log is not visible for "${selectedService.name}"` });
+        } else {
+          const text = formatServiceErrorSummary(selectedService);
+          copyToClipboardDetailed(text).then(res => {
+            dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied summary for "${selectedService.name}"`) });
+          });
+        }
       }
     }
   };
 
   const handleCopyLog = (log: LogEntry) => {
-    copyToClipboard(log.message);
-    dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
-    dispatch({ type: 'SHOW_TOAST', message: `✔ Copied log from "${log.service || selectedService?.name || 'service'}"` });
+    copyToClipboardDetailed(log.message).then(res => {
+      dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+      dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, `✔ Copied log from "${log.service || selectedService?.name || 'service'}"`) });
+    });
   };
 
   const handleCopyGlobalCurrent = () => {
-    const log = state.globalLogs[state.globalSelectedLogIndex] || state.globalLogs[state.globalLogs.length - 1];
+    if (copyPanelSelection('global')) return;
+    const visibleLogs = getVisiblePanelLogs('global').visibleLogs;
+    const log = visibleLogs.find(entry => String(entry.id) === String(state.globalSelectedLogId))
+      || (state.globalSelectedLogId === null ? visibleLogs[state.globalSelectedLogIndex] : undefined);
     if (log) {
       const jsonRes = parseJsonLog(log.message);
       const isExpanded = !!(jsonRes.isJson && (state.globalExpandedLogIds[log.id] || state.isWrapMode));
       if (isExpanded && jsonRes.parsed) {
-        copyToClipboard(prettyPrintJson(log.message));
-        dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
-        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied formatted global JSON' });
+        copyToClipboardDetailed(prettyPrintJson(log.message)).then(res => {
+          dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+          dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, '✔ Copied formatted global JSON') });
+        });
       } else {
-        copyToClipboard(formatLogEntry(log));
-        dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
-        dispatch({ type: 'SHOW_TOAST', message: '✔ Copied selected global log' });
+        copyToClipboardDetailed(formatLogEntry(log)).then(res => {
+          dispatch({ type: 'SET_COPIED_FLASH', logId: log.id });
+          dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(res, '✔ Copied selected global log') });
+        });
       }
     } else {
       dispatch({ type: 'SHOW_TOAST', message: 'ℹ No global logs to copy' });
     }
   };
 
-  const handleScrollServiceJson = (delta: number) => {
+  const handleScrollServiceJson = (delta: number, logId?: string | number) => {
     const logs = state.activeTab === 'errors' ? (selectedService?.errorLogs || []) : (selectedService?.logs || []);
-    const curLog = logs[state.serviceSelectedLogIndex];
+    const curLog = logId !== undefined
+      ? logs.find(log => String(log.id) === String(logId))
+      : logs.find(log => String(log.id) === String(state.serviceSelectedLogId)) || logs[state.serviceSelectedLogIndex];
     if (!curLog) return;
     const jsonRes = parseJsonLog(curLog.message);
     const fullLines = jsonRes.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : [];
-    const maxJsonLines = Math.max(1, (viewport.detailPanelHeight || 12) - 7);
+    const maxJsonLines = getVisiblePanelLogs('service').maxJsonLines;
     const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
-    dispatch({ type: 'SCROLL_JSON_LINES', delta, maxScroll, panel: 'service' });
+    dispatch({ type: 'SCROLL_JSON_LINES', delta, maxScroll, logId: curLog.id, panel: 'service' });
   };
 
-  const handleScrollGlobalJson = (delta: number) => {
-    const curLog = state.globalLogs[state.globalSelectedLogIndex];
+  const handleScrollGlobalJson = (delta: number, logId?: string | number) => {
+    const visibleLogs = getVisiblePanelLogs('global').visibleLogs;
+    const curLog = logId !== undefined
+      ? visibleLogs.find(log => String(log.id) === String(logId))
+      : visibleLogs.find(log => String(log.id) === String(state.globalSelectedLogId)) || visibleLogs[state.globalSelectedLogIndex];
     if (!curLog) return;
     const jsonRes = parseJsonLog(curLog.message);
     const fullLines = jsonRes.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : [];
-    const maxJsonLines = Math.max(1, (viewport.globalLogsPanelHeight || 10) - 4);
+    const maxJsonLines = getVisiblePanelLogs('global').maxJsonLines;
     const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
-    dispatch({ type: 'SCROLL_JSON_LINES', delta, maxScroll, panel: 'global' });
+    dispatch({ type: 'SCROLL_JSON_LINES', delta, maxScroll, logId: curLog.id, panel: 'global' });
   };
 
   // Calculate active selection summary for Footer
@@ -247,9 +388,12 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               isWrapMode={state.isWrapMode}
               isMaximized={true}
               selectedLogIndex={state.serviceSelectedLogIndex}
+              selectedLogId={state.serviceSelectedLogId}
               selectionAnchor={state.serviceSelectionAnchor}
+              selectionAnchorLogId={state.serviceSelectionAnchorLogId}
               charSelection={state.serviceCharSelection}
               jsonLineScroll={state.serviceJsonLineScroll}
+              jsonLineScrollById={state.serviceJsonLineScrollById}
               expandedLogIds={state.serviceExpandedLogIds}
               copiedLogId={state.copiedLogId}
               onRestart={() => handleRestart(state.selectedIndex)}
@@ -261,14 +405,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
               onCopyCurrent={handleCopyCurrent}
               onCopyLog={handleCopyLog}
-              onSelectLogIndex={(index, isShift) => {
-                if (isShift) {
-                  const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
-                  dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'service' });
-                } else {
-                  dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' });
-                }
-              }}
+              onSelectLogIndex={handleSelectServiceLog}
               onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
             />
           </Box>
@@ -289,7 +426,9 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               isWrapMode={state.isWrapMode}
               isMaximized={true}
               selectedLogIndex={state.globalSelectedLogIndex}
+              selectedLogId={state.globalSelectedLogId}
               selectionAnchor={state.globalSelectionAnchor}
+              selectionAnchorLogId={state.globalSelectionAnchorLogId}
               charSelection={state.globalCharSelection}
               jsonLineScroll={state.globalJsonLineScroll}
               expandedLogIds={state.globalExpandedLogIds}
@@ -303,14 +442,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
               onCopyCurrent={handleCopyGlobalCurrent}
               onCopyLog={handleCopyLog}
-              onSelectLogIndex={(index, isShift) => {
-                if (isShift) {
-                  const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
-                  dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'global' });
-                } else {
-                  dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' });
-                }
-              }}
+              onSelectLogIndex={handleSelectGlobalLog}
               onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
             />
           </Box>
@@ -374,9 +506,12 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.contentHeight - 1}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.serviceSelectedLogIndex}
+                selectedLogId={state.serviceSelectedLogId}
                 selectionAnchor={state.serviceSelectionAnchor}
+                selectionAnchorLogId={state.serviceSelectionAnchorLogId}
                 charSelection={state.serviceCharSelection}
                 jsonLineScroll={state.serviceJsonLineScroll}
+                jsonLineScrollById={state.serviceJsonLineScrollById}
                 expandedLogIds={state.serviceExpandedLogIds}
                 copiedLogId={state.copiedLogId}
                 onRestart={() => handleRestart(state.selectedIndex)}
@@ -388,14 +523,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index, isShift) => {
-                  if (isShift) {
-                    const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
-                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'service' });
-                  } else {
-                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' });
-                  }
-                }}
+                onSelectLogIndex={handleSelectServiceLog}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
               />
             )}
@@ -413,7 +541,9 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.contentHeight - 1}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.globalSelectedLogIndex}
+                selectedLogId={state.globalSelectedLogId}
                 selectionAnchor={state.globalSelectionAnchor}
+                selectionAnchorLogId={state.globalSelectionAnchorLogId}
                 charSelection={state.globalCharSelection}
                 jsonLineScroll={state.globalJsonLineScroll}
                 expandedLogIds={state.globalExpandedLogIds}
@@ -427,14 +557,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index, isShift) => {
-                  if (isShift) {
-                    const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
-                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'global' });
-                  } else {
-                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' });
-                  }
-                }}
+                onSelectLogIndex={handleSelectGlobalLog}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
               />
             )}
@@ -477,9 +600,12 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 isUltraCompact={viewport.isUltraCompactHeight}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.serviceSelectedLogIndex}
+                selectedLogId={state.serviceSelectedLogId}
                 selectionAnchor={state.serviceSelectionAnchor}
+                selectionAnchorLogId={state.serviceSelectionAnchorLogId}
                 charSelection={state.serviceCharSelection}
                 jsonLineScroll={state.serviceJsonLineScroll}
+                jsonLineScrollById={state.serviceJsonLineScrollById}
                 expandedLogIds={state.serviceExpandedLogIds}
                 copiedLogId={state.copiedLogId}
                 onRestart={() => handleRestart(state.selectedIndex)}
@@ -491,14 +617,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index, isShift) => {
-                  if (isShift) {
-                    const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
-                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'service' });
-                  } else {
-                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' });
-                  }
-                }}
+                onSelectLogIndex={handleSelectServiceLog}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
               />
               <GlobalLogsPanel 
@@ -514,7 +633,9 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 height={viewport.globalLogsPanelHeight}
                 isWrapMode={state.isWrapMode}
                 selectedLogIndex={state.globalSelectedLogIndex}
+                selectedLogId={state.globalSelectedLogId}
                 selectionAnchor={state.globalSelectionAnchor}
+                selectionAnchorLogId={state.globalSelectionAnchorLogId}
                 charSelection={state.globalCharSelection}
                 jsonLineScroll={state.globalJsonLineScroll}
                 expandedLogIds={state.globalExpandedLogIds}
@@ -528,14 +649,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
-                onSelectLogIndex={(index, isShift) => {
-                  if (isShift) {
-                    const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
-                    dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'global' });
-                  } else {
-                    dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' });
-                  }
-                }}
+                onSelectLogIndex={handleSelectGlobalLog}
                 onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
               />
             </Box>

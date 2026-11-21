@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme, getServiceBadgeStyle } from '../theme/theme.js';
-import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow } from '../utils/logFormatter.js';
+import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow, filterGlobalLogs, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId } from '../utils/logFormatter.js';
 
 export interface GlobalLogsPanelProps {
   logs?: LogEntry[];
@@ -19,9 +19,12 @@ export interface GlobalLogsPanelProps {
   isWrapMode?: boolean;
   isMaximized?: boolean;
   selectedLogIndex?: number;
+  selectedLogId?: string | number | null;
   selectionAnchor?: number | null;
+  selectionAnchorLogId?: string | number | null;
   charSelection?: { start: number; end: number } | null;
   jsonLineScroll?: number;
+  jsonLineScrollById?: Record<string | number, number>;
   expandedLogIds?: Record<string | number, boolean>;
   copiedLogId?: string | number | null;
   onToggleSearch?: () => void;
@@ -29,11 +32,11 @@ export interface GlobalLogsPanelProps {
   onToggleLive?: () => void;
   onToggleWrap?: () => void;
   onToggleMaximize?: () => void;
-  onScrollJson?: (delta: number) => void;
+  onScrollJson?: (delta: number, logId?: string | number) => void;
   onFocus?: () => void;
   onCopyCurrent?: () => void;
   onCopyLog?: (log: LogEntry) => void;
-  onSelectLogIndex?: (index: number, isShift?: boolean) => void;
+  onSelectLogIndex?: (index: number, isShift?: boolean, logId?: string | number) => void;
   onToggleExpandLog?: (logId: string | number) => void;
 }
 
@@ -51,9 +54,12 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   isWrapMode = false,
   isMaximized = false,
   selectedLogIndex = 0,
+  selectedLogId = null,
   selectionAnchor = null,
+  selectionAnchorLogId = null,
   charSelection = null,
   jsonLineScroll = 0,
+  jsonLineScrollById = {},
   expandedLogIds = {},
   copiedLogId = null,
   onToggleSearch,
@@ -82,11 +88,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
       const isJsonWarn = res.level?.toLowerCase() === 'warn';
       const msgColor = isJsonErr ? theme.colors.stopped : isJsonWarn ? theme.colors.warning : theme.colors.textPrimary;
 
-      const eventMsg = res.canonicalMsg || (res.extraPairs && res.extraPairs.length > 0
-        ? res.extraPairs.map(p => `${p.key}: ${p.val}`).join(' | ')
-        : (res.error || 'Structured payload'));
-
-      const displayMsg = isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg);
+      const displayMsg = getLogDisplayText(log, maxMsgLen, isWrapMode);
 
       // Character selection active on this row: apply ONLY to formatted displayMsg!
       if (isCharSelected && charSelection) {
@@ -142,7 +144,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     }
 
     // 2. Standard log message rendering
-    const msg = isWrapMode ? rawMsg : (rawMsg.length > maxMsgLen ? rawMsg.slice(0, maxMsgLen - 1) + '…' : rawMsg);
+    const msg = getLogDisplayText(log, maxMsgLen, isWrapMode);
 
     if (isCharSelected && charSelection) {
       const s = Math.max(0, Math.min(msg.length, charSelection.start));
@@ -215,16 +217,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   };
 
   // Filter logs if filter or search active
-  const matchingLogs = logs.filter(l => {
-    if (activeFilter !== 'All Services' && l.service.toLowerCase() !== activeFilter.toLowerCase()) {
-      return false;
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return l.message.toLowerCase().includes(q) || l.service.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const matchingLogs = filterGlobalLogs(logs, searchQuery, activeFilter);
 
   const totalFilteredLogs = matchingLogs.length;
 
@@ -232,7 +225,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   // Overhead: Border top (1) + Border bottom (1) + Header (1) + Hairline (1) = 4 lines.
   const overheadLines = 4;
   const availableLogLines = Math.max(2, (height || 10) - overheadLines);
-  const activeExpandedLogId = Object.keys(expandedLogIds).find(k => expandedLogIds[k]);
+  const activeExpandedLogId = getLogWindowAnchorId(matchingLogs, selectedLogId, expandedLogIds, selectionAnchorLogId);
 
   const {
     visibleLogs,
@@ -250,10 +243,21 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     anchorLogId: activeExpandedLogId || null
   });
 
-  const safeSelectedIndex = Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
-  const hasRangeSelection = isFocused && selectionAnchor !== null && selectionAnchor !== safeSelectedIndex;
-  const rangeMin = selectionAnchor !== null ? Math.min(selectionAnchor, safeSelectedIndex) : safeSelectedIndex;
-  const rangeMax = selectionAnchor !== null ? Math.max(selectionAnchor, safeSelectedIndex) : safeSelectedIndex;
+  const resolvedSelectedIndex = selectedLogId === null
+    ? -1
+    : visibleLogs.findIndex(log => log.id === selectedLogId);
+  const safeSelectedIndex = selectedLogId !== null
+    ? resolvedSelectedIndex
+    : Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
+  const resolvedAnchorIndex = selectionAnchorLogId === null
+    ? -1
+    : visibleLogs.findIndex(log => log.id === selectionAnchorLogId);
+  const visibleAnchorIndex = selectionAnchorLogId !== null
+    ? (resolvedAnchorIndex >= 0 ? resolvedAnchorIndex : null)
+    : selectionAnchor;
+  const hasRangeSelection = isFocused && safeSelectedIndex >= 0 && visibleAnchorIndex !== null && visibleAnchorIndex !== safeSelectedIndex;
+  const rangeMin = visibleAnchorIndex !== null ? Math.min(visibleAnchorIndex, safeSelectedIndex) : safeSelectedIndex;
+  const rangeMax = visibleAnchorIndex !== null ? Math.max(visibleAnchorIndex, safeSelectedIndex) : safeSelectedIndex;
   const selectedLinesCount = hasRangeSelection ? rangeMax - rangeMin + 1 : 1;
 
   let selectedCharsCount = 0;
@@ -452,7 +456,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
               highlightedLines = fullLines;
             } else {
               const maxScroll = fullLines.length - maxJsonLines;
-              const offset = Math.max(0, Math.min(maxScroll, jsonLineScroll || 0));
+              const offset = Math.max(0, Math.min(maxScroll, jsonLineScrollById[log.id] ?? jsonLineScroll));
               highlightedLines = fullLines.slice(offset, offset + maxJsonLines);
               jsonScrollInfo = {
                 start: offset + 1,
@@ -466,18 +470,23 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
             <Box
               key={log.id}
               flexDirection="column"
-              backgroundColor={isInRange ? '#1E293B' : undefined}
+              backgroundColor={hasRangeSelection && isInRange ? '#1E3A5F' : isInRange ? '#14283A' : undefined}
               paddingX={0}
               marginBottom={0}
             >
               {/* 1. Clickable Row Header: selects row & focuses panel */}
               <Clickable
                 id={`global-log-row-${index}`}
-                textStartX={jsonResult.isJson ? 42 : 23}
+                textStartX={getLogMessageColumnOffset(
+                  log,
+                  23,
+                  isExpanded,
+                  jsonScrollInfo ? `[${jsonScrollInfo.start}-${jsonScrollInfo.end}/${jsonScrollInfo.total} lines]` : undefined
+                )}
                 width="100%"
                 onClick={(ev) => {
                   onFocus?.();
-                  onSelectLogIndex?.(index, ev?.shiftKey);
+                  onSelectLogIndex?.(index, ev?.shiftKey, log.id);
                 }}
               >
                 <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap" width="100%" height={1} overflow="hidden">
@@ -485,8 +494,8 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                   <Box width={2} flexShrink={0}>
                     {isCursor ? (
                       <Text color={theme.colors.accent} bold>▶ </Text>
-                    ) : isInRange ? (
-                      <Text color={theme.colors.accent} bold>┃ </Text>
+                    ) : hasRangeSelection && isInRange ? (
+                      <Text color={theme.colors.accent}>▎ </Text>
                     ) : (
                       <Text color={theme.colors.textDim}>  </Text>
                     )}
@@ -510,7 +519,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                       <Clickable
                         onClick={() => {
                           onFocus?.();
-                          onSelectLogIndex?.(index);
+                          onSelectLogIndex?.(index, false, log.id);
                           onToggleExpandLog?.(log.id);
                         }}
                       >
@@ -525,8 +534,8 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                           <Clickable
                             onClick={() => {
                               onFocus?.();
-                              onSelectLogIndex?.(index);
-                              onScrollJson?.(-1);
+                              onSelectLogIndex?.(index, false, log.id);
+                              onScrollJson?.(-1, log.id);
                             }}
                           >
                             <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
@@ -541,8 +550,8 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                           <Clickable
                             onClick={() => {
                               onFocus?.();
-                              onSelectLogIndex?.(index);
-                              onScrollJson?.(1);
+                              onSelectLogIndex?.(index, false, log.id);
+                              onScrollJson?.(1, log.id);
                             }}
                           >
                             <Box backgroundColor={theme.colors.card} paddingX={1}>

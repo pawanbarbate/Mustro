@@ -4,7 +4,7 @@ import { Service, ActiveTab, LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme } from '../theme/theme.js';
 import useSpinner from '../hooks/useSpinner.js';
-import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow } from '../utils/logFormatter.js';
+import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId } from '../utils/logFormatter.js';
 
 export interface ServiceDetailPanelProps {
   service?: Service;
@@ -19,9 +19,12 @@ export interface ServiceDetailPanelProps {
   isUltraCompact?: boolean;
   isWrapMode?: boolean;
   selectedLogIndex?: number;
+  selectedLogId?: string | number | null;
   selectionAnchor?: number | null;
+  selectionAnchorLogId?: string | number | null;
   charSelection?: { start: number; end: number } | null;
   jsonLineScroll?: number;
+  jsonLineScrollById?: Record<string | number, number>;
   expandedLogIds?: Record<string | number, boolean>;
   copiedLogId?: string | number | null;
   onRestart?: () => void;
@@ -29,11 +32,11 @@ export interface ServiceDetailPanelProps {
   onSelectTab?: (tab: ActiveTab) => void;
   onToggleWrap?: () => void;
   onToggleMaximize?: () => void;
-  onScrollJson?: (delta: number) => void;
+  onScrollJson?: (delta: number, logId?: string | number) => void;
   onFocus?: () => void;
   onCopyCurrent?: () => void;
   onCopyLog?: (log: LogEntry) => void;
-  onSelectLogIndex?: (index: number, isShift?: boolean) => void;
+  onSelectLogIndex?: (index: number, isShift?: boolean, logId?: string | number) => void;
   onToggleExpandLog?: (logId: string | number) => void;
 }
 
@@ -57,9 +60,12 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   isUltraCompact = false,
   isWrapMode = false,
   selectedLogIndex = 0,
+  selectedLogId = null,
   selectionAnchor = null,
+  selectionAnchorLogId = null,
   charSelection = null,
   jsonLineScroll = 0,
+  jsonLineScrollById = {},
   expandedLogIds = {},
   copiedLogId = null,
   onRestart,
@@ -159,7 +165,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
 
   const status = getStatusInfo();
 
-  const renderLogMessage = (msg: string, jsonResult?: JsonLogParseResult, isBadgeShown?: boolean, isCharSelected?: boolean) => {
+  const renderLogMessage = (msg: string, jsonResult?: JsonLogParseResult, isBadgeShown?: boolean, isCharSelected?: boolean, displayMessage?: string) => {
     // 1. Smart Structured JSON log rendering
     const res = jsonResult || parseJsonLog(msg);
     if (res.isJson) {
@@ -170,8 +176,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
       const eventMsg = res.canonicalMsg || (res.extraPairs && res.extraPairs.length > 0
         ? res.extraPairs.map(p => `${p.key}: ${p.val}`).join(' | ')
         : (res.error || 'Structured payload'));
-
-      const displayMsg = isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg);
+      const displayMsg = displayMessage ?? (isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg));
 
       // Character selection active on this row: apply ONLY to formatted displayMsg!
       if (isCharSelected && charSelection) {
@@ -221,7 +226,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
     }
 
     // 2. Standard log message rendering
-    const displayStr = isWrapMode ? msg : (msg.length > maxMsgLen ? msg.slice(0, maxMsgLen - 1) + '…' : msg);
+    const displayStr = displayMessage ?? (isWrapMode ? msg : (msg.length > maxMsgLen ? msg.slice(0, maxMsgLen - 1) + '…' : msg));
 
     // Character selection on standard log:
     if (isCharSelected && charSelection) {
@@ -286,7 +291,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   // When !isUltraCompact, add Tabs row (1) + Hairline (1) = 2 lines. Total = 7 lines.
   const overheadLines = isUltraCompact ? 5 : 7;
   const availableLogLines = Math.max(1, (height || 10) - overheadLines);
-  const activeExpandedLogId = Object.keys(expandedLogIds).find(k => expandedLogIds[k]);
+  const activeExpandedLogId = getLogWindowAnchorId(currentLogs, selectedLogId, expandedLogIds, selectionAnchorLogId);
 
   const {
     visibleLogs,
@@ -303,10 +308,21 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
     anchorLogId: activeExpandedLogId || null
   });
 
-  const safeSelectedIndex = Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
-  const hasRangeSelection = isFocused && selectionAnchor !== null && selectionAnchor !== safeSelectedIndex;
-  const rangeMin = selectionAnchor !== null ? Math.min(selectionAnchor, safeSelectedIndex) : safeSelectedIndex;
-  const rangeMax = selectionAnchor !== null ? Math.max(selectionAnchor, safeSelectedIndex) : safeSelectedIndex;
+  const resolvedSelectedIndex = selectedLogId === null
+    ? -1
+    : visibleLogs.findIndex(log => log.id === selectedLogId);
+  const safeSelectedIndex = selectedLogId !== null
+    ? resolvedSelectedIndex
+    : Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
+  const resolvedAnchorIndex = selectionAnchorLogId === null
+    ? -1
+    : visibleLogs.findIndex(log => log.id === selectionAnchorLogId);
+  const visibleAnchorIndex = selectionAnchorLogId !== null
+    ? (resolvedAnchorIndex >= 0 ? resolvedAnchorIndex : null)
+    : selectionAnchor;
+  const hasRangeSelection = isFocused && safeSelectedIndex >= 0 && visibleAnchorIndex !== null && visibleAnchorIndex !== safeSelectedIndex;
+  const rangeMin = visibleAnchorIndex !== null ? Math.min(visibleAnchorIndex, safeSelectedIndex) : safeSelectedIndex;
+  const rangeMax = visibleAnchorIndex !== null ? Math.max(visibleAnchorIndex, safeSelectedIndex) : safeSelectedIndex;
   const selectedLinesCount = hasRangeSelection ? rangeMax - rangeMin + 1 : 1;
 
   let selectedCharsCount = 0;
@@ -566,7 +582,9 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                 highlightedLines = fullLines;
               } else {
                 const maxScroll = fullLines.length - maxJsonLines;
-                const offset = Math.max(0, Math.min(maxScroll, jsonLineScroll || 0));
+                const storedOffset = jsonLineScrollById[log.id]
+                  ?? (Object.keys(jsonLineScrollById).length === 0 ? jsonLineScroll : 0);
+                const offset = Math.max(0, Math.min(maxScroll, storedOffset));
                 highlightedLines = fullLines.slice(offset, offset + maxJsonLines);
                 jsonScrollInfo = {
                   start: offset + 1,
@@ -580,18 +598,23 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               <Box
                 key={log.id || index}
                 flexDirection="column"
-                backgroundColor={isInRange ? '#1E293B' : undefined}
+                backgroundColor={hasRangeSelection && isInRange ? '#1E3A5F' : isInRange ? '#14283A' : undefined}
                 paddingX={0}
                 marginBottom={0}
               >
                 {/* 1. Clickable Row Header: selects row & focuses panel */}
                 <Clickable
                   id={`service-log-row-${index}`}
-                  textStartX={jsonResult.isJson ? 38 : 19}
+                  textStartX={getLogMessageColumnOffset(
+                    log,
+                    20,
+                    isExpanded,
+                    jsonScrollInfo ? `[${jsonScrollInfo.start}-${jsonScrollInfo.end}/${jsonScrollInfo.total} lines]` : undefined
+                  )}
                   width="100%"
                   onClick={(ev) => {
                     onFocus?.();
-                    onSelectLogIndex?.(index, ev?.shiftKey);
+                    onSelectLogIndex?.(index, ev?.shiftKey, log.id);
                   }}
                 >
                   <Box flexDirection="row" alignItems="center" flexWrap="nowrap" width="100%">
@@ -599,8 +622,8 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                     <Box width={2} flexShrink={0}>
                       {isCursor ? (
                         <Text color={theme.colors.accent} bold>▶ </Text>
-                      ) : isInRange ? (
-                        <Text color={theme.colors.accent} bold>┃ </Text>
+                      ) : hasRangeSelection && isInRange ? (
+                        <Text color={theme.colors.accent}>▎ </Text>
                       ) : (
                         <Text color={theme.colors.textDim}>  </Text>
                       )}
@@ -622,7 +645,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                         <Clickable
                           onClick={() => {
                             onFocus?.();
-                            onSelectLogIndex?.(index);
+                            onSelectLogIndex?.(index, false, log.id);
                             onToggleExpandLog?.(log.id);
                           }}
                         >
@@ -637,8 +660,8 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                             <Clickable
                               onClick={() => {
                                 onFocus?.();
-                                onSelectLogIndex?.(index);
-                                onScrollJson?.(-1);
+                                onSelectLogIndex?.(index, false, log.id);
+                                onScrollJson?.(-1, log.id);
                               }}
                             >
                               <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
@@ -653,8 +676,8 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                             <Clickable
                               onClick={() => {
                                 onFocus?.();
-                                onSelectLogIndex?.(index);
-                                onScrollJson?.(1);
+                                onSelectLogIndex?.(index, false, log.id);
+                                onScrollJson?.(1, log.id);
                               }}
                             >
                               <Box backgroundColor={theme.colors.card} paddingX={1}>
@@ -667,7 +690,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                     )}
 
                     <Box flexGrow={1} flexShrink={1}>
-                      {renderLogMessage(log.message, jsonResult, jsonResult.isJson, isCursor)}
+                      {renderLogMessage(log.message, jsonResult, jsonResult.isJson, isCursor, getLogDisplayText(log, maxMsgLen, isWrapMode))}
                     </Box>
 
                     {/* Inline Copy Confirmation Badge */}
@@ -741,11 +764,11 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                 <Clickable
                   key={err.id || i}
                   id={`service-log-row-${i}`}
-                  textStartX={19}
+                  textStartX={20}
                   width="100%"
                   onClick={(ev) => {
                     onFocus?.();
-                    onSelectLogIndex?.(i, ev?.shiftKey);
+                    onSelectLogIndex?.(i, ev?.shiftKey, err.id);
                   }}
                 >
                   <Box 
@@ -753,14 +776,14 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                     alignItems="center" 
                     flexWrap="nowrap"
                     width="100%"
-                    backgroundColor={isInRange ? '#1E293B' : undefined}
+                    backgroundColor={hasRangeSelection && isInRange ? '#1E3A5F' : isInRange ? '#14283A' : undefined}
                   >
                     {/* Visual Selector Indicator */}
                     <Box width={2} flexShrink={0}>
                       {isCursor ? (
                         <Text color={theme.colors.stopped} bold>▶ </Text>
-                      ) : isInRange ? (
-                        <Text color={theme.colors.stopped} bold>┃ </Text>
+                      ) : hasRangeSelection && isInRange ? (
+                        <Text color={theme.colors.stopped}>▎ </Text>
                       ) : (
                         <Text color={theme.colors.textDim}>  </Text>
                       )}
