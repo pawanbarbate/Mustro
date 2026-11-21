@@ -90,8 +90,8 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Expand / collapse full JSON inline in feed</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color={theme.colors.warning} bold>m</Text>
-          <Text color={theme.colors.textSecondary}>Toggle Mouse Mode (TUI Drag-Select vs Native OS Drag)</Text>
+          <Text color={theme.colors.accent} bold>z  /  Z</Text>
+          <Text color={theme.colors.textSecondary}>Zoom / Maximize active panel (Full-screen focus mode)</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.textSecondary} bold>q  /  Ctrl+C</Text>

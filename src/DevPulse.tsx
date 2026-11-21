@@ -33,7 +33,7 @@ export interface DevPulseProps {
 export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwitchConfig, width, height }) => {
   const { exit } = useApp();
   const [state, dispatch] = useReducer(dashboardReducer, config, createInitialDashboardState);
-  const viewport = useTerminalViewport(width, height);
+  const viewport = useTerminalViewport(width, height, state.maximizedPanel);
   const clickManagerRef = useRef<ClickManagerContextValue | null>(null);
 
   // Real OS Process Manager Orchestration
@@ -99,39 +99,13 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     }
   }, [state.copiedLogId]);
 
-  // Mouse Mode effect: Interactive by default (TUI clicks + drag selection).
-  // When toggled to 'native', mouse reporting is disabled so the OS terminal can drag-select raw text.
+  // Permanent SGR Mouse Reporting (clicks + drag selection + mouse wheel)
   useEffect(() => {
-    if (state.mouseMode === 'native') {
-      try { process.stdout.write('\x1b[?1000l\x1b[?1002l\x1b[?1006l'); } catch {}
-    } else {
-      try { process.stdout.write('\x1b[?1000h\x1b[?1002h\x1b[?1006h'); } catch {}
-    }
-  }, [state.mouseMode]);
-
-  useEffect(() => {
+    try { process.stdout.write('\x1b[?1000h\x1b[?1002h\x1b[?1006h'); } catch {}
     return () => {
       try { process.stdout.write('\x1b[?1000l\x1b[?1002l\x1b[?1006l'); } catch {}
     };
   }, []);
-
-  const handleToggleMouseMode = () => {
-    const nextMode = state.mouseMode === 'interactive' ? 'native' : 'interactive';
-    dispatch({ type: 'TOGGLE_MOUSE_MODE' });
-    if (nextMode === 'native') {
-      dispatch({ 
-        type: 'SHOW_TOAST', 
-        message: '🖱️ Native Mouse: Terminal OS text drag enabled. Press "m" for TUI mode.',
-        durationMs: 3500 
-      });
-    } else {
-      dispatch({ 
-        type: 'SHOW_TOAST', 
-        message: '🖱️ TUI Mouse: Click buttons, drag-select text/lines, and scroll.',
-        durationMs: 3000 
-      });
-    }
-  };
 
   // Copy helpers
   const handleCopyCurrent = () => {
@@ -196,6 +170,27 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     }
   };
 
+  const handleScrollServiceJson = (delta: number) => {
+    const logs = state.activeTab === 'errors' ? (selectedService?.errorLogs || []) : (selectedService?.logs || []);
+    const curLog = logs[state.serviceSelectedLogIndex];
+    if (!curLog) return;
+    const jsonRes = parseJsonLog(curLog.message);
+    const fullLines = jsonRes.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : [];
+    const maxJsonLines = Math.max(1, (viewport.detailPanelHeight || 12) - 7);
+    const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
+    dispatch({ type: 'SCROLL_JSON_LINES', delta, maxScroll, panel: 'service' });
+  };
+
+  const handleScrollGlobalJson = (delta: number) => {
+    const curLog = state.globalLogs[state.globalSelectedLogIndex];
+    if (!curLog) return;
+    const jsonRes = parseJsonLog(curLog.message);
+    const fullLines = jsonRes.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : [];
+    const maxJsonLines = Math.max(1, (viewport.globalLogsPanelHeight || 10) - 4);
+    const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
+    dispatch({ type: 'SCROLL_JSON_LINES', delta, maxScroll, panel: 'global' });
+  };
+
   // Calculate active selection summary for Footer
   let selectionText: string | null = null;
   if (state.activePanel === 'serviceLogs') {
@@ -237,7 +232,103 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
         />
 
         {/* 2. Main Content Area */}
-        {viewport.isUltraNarrow ? (
+        {state.maximizedPanel === 'serviceLogs' ? (
+          /* Maximized Focus Mode: Service Detail Panel Full Screen */
+          <Box flexDirection="column" width={viewport.width} height={viewport.contentHeight}>
+            <ServiceDetailPanel 
+              service={selectedService} 
+              activeTab={state.activeTab}
+              isRestarting={state.restartingServiceId === selectedService?.id}
+              maxLogs={viewport.maxServiceLogs}
+              isFocused={true}
+              scrollOffset={state.serviceLogScroll}
+              panelWidth={viewport.width}
+              height={viewport.contentHeight}
+              isWrapMode={state.isWrapMode}
+              isMaximized={true}
+              selectedLogIndex={state.serviceSelectedLogIndex}
+              selectionAnchor={state.serviceSelectionAnchor}
+              charSelection={state.serviceCharSelection}
+              jsonLineScroll={state.serviceJsonLineScroll}
+              expandedLogIds={state.serviceExpandedLogIds}
+              copiedLogId={state.copiedLogId}
+              onRestart={() => handleRestart(state.selectedIndex)}
+              onToggleStop={() => handleToggleStop(state.selectedIndex)}
+              onSelectTab={(tab) => dispatch({ type: 'SET_ACTIVE_TAB', tab })}
+              onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
+              onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
+              onScrollJson={handleScrollServiceJson}
+              onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
+              onCopyCurrent={handleCopyCurrent}
+              onCopyLog={handleCopyLog}
+              onSelectLogIndex={(index, isShift) => {
+                if (isShift) {
+                  const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
+                  dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'service' });
+                } else {
+                  dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'service' });
+                }
+              }}
+              onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
+            />
+          </Box>
+        ) : state.maximizedPanel === 'globalLogs' ? (
+          /* Maximized Focus Mode: Global Logs Panel Full Screen */
+          <Box flexDirection="column" width={viewport.width} height={viewport.contentHeight}>
+            <GlobalLogsPanel 
+              logs={state.globalLogs}
+              searchQuery={state.searchQuery}
+              isSearching={state.isSearching}
+              activeFilter={activeFilter}
+              isLive={state.isLive}
+              maxLogs={viewport.maxGlobalLogs}
+              isFocused={true}
+              scrollOffset={state.globalLogScroll}
+              panelWidth={viewport.width}
+              height={viewport.contentHeight}
+              isWrapMode={state.isWrapMode}
+              isMaximized={true}
+              selectedLogIndex={state.globalSelectedLogIndex}
+              selectionAnchor={state.globalSelectionAnchor}
+              charSelection={state.globalCharSelection}
+              jsonLineScroll={state.globalJsonLineScroll}
+              expandedLogIds={state.globalExpandedLogIds}
+              copiedLogId={state.copiedLogId}
+              onToggleSearch={() => dispatch({ type: 'SET_SEARCHING', isSearching: !state.isSearching })}
+              onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
+              onToggleLive={() => dispatch({ type: 'TOGGLE_LIVE' })}
+              onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
+              onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
+              onScrollJson={handleScrollGlobalJson}
+              onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
+              onCopyCurrent={handleCopyGlobalCurrent}
+              onCopyLog={handleCopyLog}
+              onSelectLogIndex={(index, isShift) => {
+                if (isShift) {
+                  const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
+                  dispatch({ type: 'SET_LOG_SELECTION_RANGE', anchorIndex: anchor, headIndex: index, panel: 'global' });
+                } else {
+                  dispatch({ type: 'SELECT_LOG_ROW', index, panel: 'global' });
+                }
+              }}
+              onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
+            />
+          </Box>
+        ) : state.maximizedPanel === 'services' ? (
+          /* Maximized Focus Mode: Services List Full Screen */
+          <Box flexDirection="column" width={viewport.width} height={viewport.contentHeight}>
+            <ServicesPanel 
+              services={state.services} 
+              selectedIndex={state.selectedIndex}
+              isFocused={true}
+              isCompactHeight={false}
+              panelWidth={viewport.width}
+              height={viewport.contentHeight}
+              onSelectService={(idx) => dispatch({ type: 'SELECT_SERVICE', index: idx })}
+              onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'services' })}
+            />
+          </Box>
+        ) : viewport.isUltraNarrow ? (
           /* Ultra-Narrow Single Column View with Top Switcher */
           <Box flexDirection="column" width={viewport.width} height={viewport.contentHeight}>
             <Box flexDirection="row" marginBottom={0} paddingX={1} flexWrap="nowrap">
@@ -292,6 +383,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onToggleStop={() => handleToggleStop(state.selectedIndex)}
                 onSelectTab={(tab) => dispatch({ type: 'SET_ACTIVE_TAB', tab })}
                 onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
+                onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
+                onScrollJson={handleScrollServiceJson}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
@@ -329,6 +422,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
                 onToggleLive={() => dispatch({ type: 'TOGGLE_LIVE' })}
                 onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
+                onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
+                onScrollJson={handleScrollGlobalJson}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
@@ -391,6 +486,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onToggleStop={() => handleToggleStop(state.selectedIndex)}
                 onSelectTab={(tab) => dispatch({ type: 'SET_ACTIVE_TAB', tab })}
                 onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
+                onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
+                onScrollJson={handleScrollServiceJson}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'serviceLogs' })}
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
@@ -426,6 +523,8 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCycleFilter={() => dispatch({ type: 'CYCLE_FILTER' })}
                 onToggleLive={() => dispatch({ type: 'TOGGLE_LIVE' })}
                 onToggleWrap={() => dispatch({ type: 'TOGGLE_WRAP_MODE' })}
+                onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
+                onScrollJson={handleScrollGlobalJson}
                 onFocus={() => dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'globalLogs' })}
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
@@ -448,11 +547,11 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
           isConnected={true} 
           activePanel={state.activePanel} 
           width={viewport.width} 
-          mouseMode={state.mouseMode}
+          isMaximized={state.maximizedPanel !== 'none'}
           selectionText={selectionText}
           onToggleHelp={() => dispatch({ type: 'TOGGLE_HELP', show: !state.showHelp })}
           onSwitchConfig={onSwitchConfig}
-          onToggleMouseMode={handleToggleMouseMode}
+          onToggleMaximize={() => dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' })}
         />
 
         {/* 4. Optional Help Overlay Modal */}

@@ -60,7 +60,7 @@ export interface DashboardState {
   serviceExpandedLogIds: Record<string | number, boolean>;
   globalExpandedLogIds: Record<string | number, boolean>;
   copiedLogId: string | number | null;
-  mouseMode: 'interactive' | 'native';
+  maximizedPanel: 'none' | 'serviceLogs' | 'globalLogs' | 'services';
 }
 
 export const initialDashboardState: DashboardState = {
@@ -97,7 +97,7 @@ export const initialDashboardState: DashboardState = {
   serviceExpandedLogIds: {},
   globalExpandedLogIds: {},
   copiedLogId: null,
-  mouseMode: 'interactive'
+  maximizedPanel: 'none'
 };
 
 export function configToServices(config?: DevPulseConfig): Service[] {
@@ -190,7 +190,7 @@ export type DashboardAction =
   | { type: 'RESET_JSON_LINE_SCROLL'; panel?: 'service' | 'global' }
   | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global' }
   | { type: 'TOGGLE_ALL_JSON_EXPANSION'; forceState?: boolean }
-  | { type: 'TOGGLE_MOUSE_MODE' }
+  | { type: 'TOGGLE_MAXIMIZE_PANEL'; panel?: ActivePanel }
   | { type: 'SET_COPIED_FLASH'; logId: string | number | null };
 
 export function dashboardReducer(state: DashboardState, action: DashboardAction): DashboardState {
@@ -814,10 +814,13 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
       };
     }
 
-    case 'TOGGLE_MOUSE_MODE': {
+    case 'TOGGLE_MAXIMIZE_PANEL': {
+      const panel = action.panel || state.activePanel;
+      const target = panel === 'serviceLogs' ? 'serviceLogs' : panel === 'globalLogs' ? 'globalLogs' : 'services';
+      const nextMaximized = state.maximizedPanel === target ? 'none' : target;
       return {
         ...state,
-        mouseMode: state.mouseMode === 'interactive' ? 'native' : 'interactive'
+        maximizedPanel: nextMaximized
       };
     }
 

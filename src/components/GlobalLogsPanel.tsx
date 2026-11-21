@@ -17,6 +17,7 @@ export interface GlobalLogsPanelProps {
   panelWidth?: number;
   height?: number;
   isWrapMode?: boolean;
+  isMaximized?: boolean;
   selectedLogIndex?: number;
   selectionAnchor?: number | null;
   charSelection?: { start: number; end: number } | null;
@@ -27,6 +28,8 @@ export interface GlobalLogsPanelProps {
   onCycleFilter?: () => void;
   onToggleLive?: () => void;
   onToggleWrap?: () => void;
+  onToggleMaximize?: () => void;
+  onScrollJson?: (delta: number) => void;
   onFocus?: () => void;
   onCopyCurrent?: () => void;
   onCopyLog?: (log: LogEntry) => void;
@@ -46,6 +49,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   panelWidth = 53,
   height,
   isWrapMode = false,
+  isMaximized = false,
   selectedLogIndex = 0,
   selectionAnchor = null,
   charSelection = null,
@@ -56,6 +60,8 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   onCycleFilter,
   onToggleLive,
   onToggleWrap,
+  onToggleMaximize,
+  onScrollJson,
   onFocus,
   onCopyCurrent,
   onCopyLog,
@@ -69,23 +75,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   const renderMessage = (log: LogEntry, jsonResult?: JsonLogParseResult, isBadgeShown?: boolean, isCharSelected?: boolean) => {
     const rawMsg = log.message;
 
-    // 0. Character selection active on this row
-    if (isCharSelected && charSelection) {
-      const s = Math.max(0, Math.min(rawMsg.length, charSelection.start));
-      const e = Math.max(s, Math.min(rawMsg.length, charSelection.end));
-      const before = rawMsg.slice(0, s);
-      const selected = rawMsg.slice(s, e);
-      const after = rawMsg.slice(e);
-      return (
-        <Text wrap={isWrapMode ? 'wrap' : undefined}>
-          <Text color={theme.colors.textPrimary}>{before}</Text>
-          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
-          <Text color={theme.colors.textPrimary}>{after}</Text>
-        </Text>
-      );
-    }
-
-    // 1. Smart Structured JSON rendering
+    // 1. Smart Structured JSON rendering (checks isJson FIRST to isolate header selection from JSON payload)
     const res = jsonResult || parseJsonLog(rawMsg);
     if (res.isJson) {
       const isJsonErr = res.error || res.level?.toLowerCase() === 'error';
@@ -97,6 +87,37 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
         : (res.error || 'Structured payload'));
 
       const displayMsg = isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg);
+
+      // Character selection active on this row: apply ONLY to formatted displayMsg!
+      if (isCharSelected && charSelection) {
+        const s = Math.max(0, Math.min(displayMsg.length, charSelection.start));
+        const e = Math.max(s, Math.min(displayMsg.length, charSelection.end));
+        const before = displayMsg.slice(0, s);
+        const selected = displayMsg.slice(s, e);
+        const after = displayMsg.slice(e);
+        return (
+          <Text wrap={isWrapMode ? 'wrap' : undefined}>
+            {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
+            {res.method && (
+              <Text color={theme.colors.borderFocus} bold>{res.method} </Text>
+            )}
+            {res.path && (
+              <Text color={theme.colors.textPrimary}>{res.path} </Text>
+            )}
+            {res.status && (
+              <Text color={String(res.status).startsWith('2') ? theme.colors.running : theme.colors.stopped} bold>
+                [{res.status}] 
+              </Text>
+            )}
+            {res.latency && (
+              <Text color={theme.colors.textMuted}>({res.latency}) </Text>
+            )}
+            <Text color={theme.colors.textPrimary}>{before}</Text>
+            <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
+            <Text color={theme.colors.textPrimary}>{after}</Text>
+          </Text>
+        );
+      }
 
       return (
         <Text wrap={isWrapMode ? 'wrap' : undefined}>
@@ -122,6 +143,21 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
 
     // 2. Standard log message rendering
     const msg = isWrapMode ? rawMsg : (rawMsg.length > maxMsgLen ? rawMsg.slice(0, maxMsgLen - 1) + '…' : rawMsg);
+
+    if (isCharSelected && charSelection) {
+      const s = Math.max(0, Math.min(msg.length, charSelection.start));
+      const e = Math.max(s, Math.min(msg.length, charSelection.end));
+      const before = msg.slice(0, s);
+      const selected = msg.slice(s, e);
+      const after = msg.slice(e);
+      return (
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
+          <Text color={theme.colors.textPrimary}>{before}</Text>
+          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
+          <Text color={theme.colors.textPrimary}>{after}</Text>
+        </Text>
+      );
+    }
 
     // Red error message with cross icon
     if (msg.includes('✖') || log.level === 'error' || log.level === 'ERROR') {
@@ -352,6 +388,24 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
             </Box>
           </Clickable>
 
+          {/* Zoom / Maximize pill */}
+          {onToggleMaximize && (
+            <Clickable onClick={() => onToggleMaximize()}>
+              <Box 
+                backgroundColor={isMaximized ? theme.colors.accentDark : theme.colors.card} 
+                paddingX={1}
+                marginRight={1}
+                flexShrink={0}
+              >
+                <Text color={isMaximized ? theme.colors.accent : theme.colors.textSecondary} bold={isMaximized}>
+                  {panelWidth < 68 
+                    ? (isMaximized ? '[ 🗗 ]' : '[ ⤢ ]') 
+                    : (isMaximized ? '[ 🗗 Restore ]' : '[ ⤢ Zoom ]')}
+                </Text>
+              </Box>
+            </Clickable>
+          )}
+
           {/* Copy pill */}
           <Clickable onClick={() => onCopyCurrent?.()}>
             <Box 
@@ -426,7 +480,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                   onSelectLogIndex?.(index, ev?.shiftKey);
                 }}
               >
-                <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap" width="100%">
+                <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap" width="100%" height={1} overflow="hidden">
                   {/* Visual Selector Indicator */}
                   <Box width={2} flexShrink={0}>
                     {isCursor ? (
@@ -467,10 +521,34 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                         </Box>
                       </Clickable>
                       {isExpanded && jsonScrollInfo && (
-                        <Box backgroundColor={theme.colors.card} paddingX={1} marginLeft={1}>
-                          <Text color={theme.colors.warning} bold>
-                            [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines ↑↓]
-                          </Text>
+                        <Box flexDirection="row" alignItems="center" marginLeft={1}>
+                          <Clickable
+                            onClick={() => {
+                              onFocus?.();
+                              onSelectLogIndex?.(index);
+                              onScrollJson?.(-1);
+                            }}
+                          >
+                            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                              <Text color={jsonScrollInfo.start > 1 ? theme.colors.accent : theme.colors.textMuted} bold>▲</Text>
+                            </Box>
+                          </Clickable>
+                          <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                            <Text color={theme.colors.warning} bold>
+                              [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines]
+                            </Text>
+                          </Box>
+                          <Clickable
+                            onClick={() => {
+                              onFocus?.();
+                              onSelectLogIndex?.(index);
+                              onScrollJson?.(1);
+                            }}
+                          >
+                            <Box backgroundColor={theme.colors.card} paddingX={1}>
+                              <Text color={jsonScrollInfo.end < jsonScrollInfo.total ? theme.colors.accent : theme.colors.textMuted} bold>▼</Text>
+                            </Box>
+                          </Clickable>
                         </Box>
                       )}
                     </Box>
@@ -489,23 +567,42 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                 </Box>
               </Clickable>
 
-              {/* 2. Inline Expanded JSON View: Pure un-intercepted Box so mouse/trackpad selection highlight works! */}
+              {/* 2. Inline Expanded JSON View: with vertical scroll track */}
               {isExpanded && highlightedLines.length > 0 && (
-                <Box flexDirection="column" paddingLeft={14} marginTop={0} marginBottom={0}>
-                  {highlightedLines.map((hl, hlIdx) => (
-                    <Box key={hlIdx} flexDirection="row">
-                      {hl.tokens.map((tok, tokIdx) => (
-                        <Text
-                          key={tokIdx}
-                          color={tok.color}
-                          bold={tok.bold}
-                          dimColor={tok.dim}
-                        >
-                          {tok.text}
-                        </Text>
-                      ))}
+                <Box flexDirection="row" paddingLeft={14} marginTop={0} marginBottom={0}>
+                  <Box flexDirection="column" flexGrow={1}>
+                    {highlightedLines.map((hl, hlIdx) => (
+                      <Box key={hlIdx} flexDirection="row" height={1} overflow="hidden">
+                        {hl.tokens.map((tok, tokIdx) => (
+                          <Text
+                            key={tokIdx}
+                            color={tok.color}
+                            bold={tok.bold}
+                            dimColor={tok.dim}
+                          >
+                            {tok.text}
+                          </Text>
+                        ))}
+                      </Box>
+                    ))}
+                  </Box>
+                  {jsonScrollInfo && jsonScrollInfo.total > maxJsonLines && (
+                    <Box flexDirection="column" width={1} alignItems="center" marginLeft={1}>
+                      {highlightedLines.map((_, idx) => {
+                        const total = jsonScrollInfo.total;
+                        const start = jsonScrollInfo.start - 1;
+                        const thumbHeight = Math.max(1, Math.round((maxJsonLines / total) * maxJsonLines));
+                        const maxScroll = Math.max(1, total - maxJsonLines);
+                        const thumbPos = Math.round((start / maxScroll) * Math.max(0, maxJsonLines - thumbHeight));
+                        const isThumb = idx >= thumbPos && idx < thumbPos + thumbHeight;
+                        return (
+                          <Text key={idx} color={isThumb ? theme.colors.accent : theme.colors.borderSubtle} bold={isThumb}>
+                            {isThumb ? '█' : '│'}
+                          </Text>
+                        );
+                      })}
                     </Box>
-                  ))}
+                  )}
                 </Box>
               )}
             </Box>

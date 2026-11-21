@@ -12,6 +12,7 @@ export interface ServiceDetailPanelProps {
   isRestarting?: boolean;
   maxLogs?: number;
   isFocused?: boolean;
+  isMaximized?: boolean;
   scrollOffset?: number;
   panelWidth?: number;
   height?: number;
@@ -27,6 +28,8 @@ export interface ServiceDetailPanelProps {
   onToggleStop?: () => void;
   onSelectTab?: (tab: ActiveTab) => void;
   onToggleWrap?: () => void;
+  onToggleMaximize?: () => void;
+  onScrollJson?: (delta: number) => void;
   onFocus?: () => void;
   onCopyCurrent?: () => void;
   onCopyLog?: (log: LogEntry) => void;
@@ -47,6 +50,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   isRestarting = false, 
   maxLogs = 6,
   isFocused = false,
+  isMaximized = false,
   scrollOffset = 0,
   panelWidth = 53,
   height,
@@ -62,6 +66,8 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   onToggleStop,
   onSelectTab,
   onToggleWrap,
+  onToggleMaximize,
+  onScrollJson,
   onFocus,
   onCopyCurrent,
   onCopyLog,
@@ -154,22 +160,6 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   const status = getStatusInfo();
 
   const renderLogMessage = (msg: string, jsonResult?: JsonLogParseResult, isBadgeShown?: boolean, isCharSelected?: boolean) => {
-    // 0. Character selection active on this row
-    if (isCharSelected && charSelection) {
-      const s = Math.max(0, Math.min(msg.length, charSelection.start));
-      const e = Math.max(s, Math.min(msg.length, charSelection.end));
-      const before = msg.slice(0, s);
-      const selected = msg.slice(s, e);
-      const after = msg.slice(e);
-      return (
-        <Text wrap={isWrapMode ? 'wrap' : undefined}>
-          <Text color={theme.colors.textPrimary}>{before}</Text>
-          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
-          <Text color={theme.colors.textPrimary}>{after}</Text>
-        </Text>
-      );
-    }
-
     // 1. Smart Structured JSON log rendering
     const res = jsonResult || parseJsonLog(msg);
     if (res.isJson) {
@@ -182,6 +172,31 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
         : (res.error || 'Structured payload'));
 
       const displayMsg = isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg);
+
+      // Character selection active on this row: apply ONLY to formatted displayMsg!
+      if (isCharSelected && charSelection) {
+        const s = Math.max(0, Math.min(displayMsg.length, charSelection.start));
+        const e = Math.max(s, Math.min(displayMsg.length, charSelection.end));
+        const before = displayMsg.slice(0, s);
+        const selected = displayMsg.slice(s, e);
+        const after = displayMsg.slice(e);
+        return (
+          <Text wrap={isWrapMode ? 'wrap' : undefined}>
+            {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
+            {res.method && <Text color={theme.colors.borderFocus} bold>{res.method} </Text>}
+            {res.path && <Text color={theme.colors.textPrimary}>{res.path} </Text>}
+            {res.status && (
+              <Text color={String(res.status).startsWith('2') ? theme.colors.running : theme.colors.stopped} bold>
+                [{res.status}]{' '}
+              </Text>
+            )}
+            {res.latency && <Text color={theme.colors.textMuted}>({res.latency}) </Text>}
+            <Text color={msgColor}>{before}</Text>
+            <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
+            <Text color={msgColor}>{after}</Text>
+          </Text>
+        );
+      }
 
       return (
         <Text wrap={isWrapMode ? 'wrap' : undefined}>
@@ -207,6 +222,22 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
 
     // 2. Standard log message rendering
     const displayStr = isWrapMode ? msg : (msg.length > maxMsgLen ? msg.slice(0, maxMsgLen - 1) + '…' : msg);
+
+    // Character selection on standard log:
+    if (isCharSelected && charSelection) {
+      const s = Math.max(0, Math.min(displayStr.length, charSelection.start));
+      const e = Math.max(s, Math.min(displayStr.length, charSelection.end));
+      const before = displayStr.slice(0, s);
+      const selected = displayStr.slice(s, e);
+      const after = displayStr.slice(e);
+      return (
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
+          <Text color={theme.colors.textPrimary}>{before}</Text>
+          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
+          <Text color={theme.colors.textPrimary}>{after}</Text>
+        </Text>
+      );
+    }
 
     if (displayStr.includes('✖')) {
       return (
@@ -350,6 +381,18 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               </Text>
             </Box>
           </Clickable>
+          {onToggleMaximize && (
+            <>
+              <Text> </Text>
+              <Clickable onClick={() => onToggleMaximize?.()}>
+                <Box backgroundColor={theme.colors.card} paddingX={1}>
+                  <Text color={theme.colors.accent} bold>
+                    [ {isMaximized ? '🗗 Restore' : '⤢ Zoom'} ]
+                  </Text>
+                </Box>
+              </Clickable>
+            </>
+          )}
         </Box>
       </Box>
 
@@ -590,10 +633,34 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                           </Box>
                         </Clickable>
                         {isExpanded && jsonScrollInfo && (
-                          <Box backgroundColor={theme.colors.card} paddingX={1} marginLeft={1}>
-                            <Text color={theme.colors.warning} bold>
-                              [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines ↑↓]
-                            </Text>
+                          <Box flexDirection="row" alignItems="center" marginLeft={1}>
+                            <Clickable
+                              onClick={() => {
+                                onFocus?.();
+                                onSelectLogIndex?.(index);
+                                onScrollJson?.(-1);
+                              }}
+                            >
+                              <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                                <Text color={jsonScrollInfo.start > 1 ? theme.colors.accent : theme.colors.textMuted} bold>▲</Text>
+                              </Box>
+                            </Clickable>
+                            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                              <Text color={theme.colors.warning} bold>
+                                [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines]
+                              </Text>
+                            </Box>
+                            <Clickable
+                              onClick={() => {
+                                onFocus?.();
+                                onSelectLogIndex?.(index);
+                                onScrollJson?.(1);
+                              }}
+                            >
+                              <Box backgroundColor={theme.colors.card} paddingX={1}>
+                                <Text color={jsonScrollInfo.end < jsonScrollInfo.total ? theme.colors.accent : theme.colors.textMuted} bold>▼</Text>
+                              </Box>
+                            </Clickable>
                           </Box>
                         )}
                       </Box>
@@ -612,23 +679,42 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                   </Box>
                 </Clickable>
 
-                {/* 2. Inline Expanded JSON View: Pure un-intercepted Box so mouse/trackpad selection highlight works! */}
+                {/* 2. Inline Expanded JSON View: with vertical scroll track */}
                 {isExpanded && highlightedLines.length > 0 && (
-                  <Box flexDirection="column" paddingLeft={12} marginTop={0} marginBottom={0}>
-                    {highlightedLines.map((hl, hlIdx) => (
-                      <Box key={hlIdx} flexDirection="row">
-                        {hl.tokens.map((tok, tokIdx) => (
-                          <Text
-                            key={tokIdx}
-                            color={tok.color}
-                            bold={tok.bold}
-                            dimColor={tok.dim}
-                          >
-                            {tok.text}
-                          </Text>
-                        ))}
+                  <Box flexDirection="row" paddingLeft={12} marginTop={0} marginBottom={0}>
+                    <Box flexDirection="column" flexGrow={1}>
+                      {highlightedLines.map((hl, hlIdx) => (
+                        <Box key={hlIdx} flexDirection="row" height={1} overflow="hidden">
+                          {hl.tokens.map((tok, tokIdx) => (
+                            <Text
+                              key={tokIdx}
+                              color={tok.color}
+                              bold={tok.bold}
+                              dimColor={tok.dim}
+                            >
+                              {tok.text}
+                            </Text>
+                          ))}
+                        </Box>
+                      ))}
+                    </Box>
+                    {jsonScrollInfo && jsonScrollInfo.total > maxJsonLines && (
+                      <Box flexDirection="column" width={1} alignItems="center" marginLeft={1}>
+                        {highlightedLines.map((_, idx) => {
+                          const total = jsonScrollInfo.total;
+                          const start = jsonScrollInfo.start - 1;
+                          const thumbHeight = Math.max(1, Math.round((maxJsonLines / total) * maxJsonLines));
+                          const maxScroll = Math.max(1, total - maxJsonLines);
+                          const thumbPos = Math.round((start / maxScroll) * Math.max(0, maxJsonLines - thumbHeight));
+                          const isThumb = idx >= thumbPos && idx < thumbPos + thumbHeight;
+                          return (
+                            <Text key={idx} color={isThumb ? theme.colors.accent : theme.colors.borderSubtle} bold={isThumb}>
+                              {isThumb ? '█' : '│'}
+                            </Text>
+                          );
+                        })}
                       </Box>
-                    ))}
+                    )}
                   </Box>
                 )}
               </Box>

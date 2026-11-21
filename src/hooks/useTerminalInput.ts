@@ -87,6 +87,37 @@ export function useTerminalInput({
       return [];
     };
 
+    const getActiveExpandedLog = (panel: 'service' | 'global'): LogEntry | null => {
+      const curState = stateRef.current;
+      if (panel === 'service') {
+        const curSvc = curState.services[curState.selectedIndex];
+        if (!curSvc) return null;
+        const allLogs = curState.activeTab === 'errors' ? (curSvc.errorLogs || []) : (curSvc.logs || []);
+        const expId = Object.keys(curState.serviceExpandedLogIds).find(k => curState.serviceExpandedLogIds[k]);
+        return expId ? allLogs.find(l => String(l.id) === String(expId)) || null : null;
+      } else {
+        const allLogs = getActiveLogList();
+        const expId = Object.keys(curState.globalExpandedLogIds).find(k => curState.globalExpandedLogIds[k]);
+        return expId ? allLogs.find(l => String(l.id) === String(expId)) || null : null;
+      }
+    };
+
+    const getJsonScrollBounds = (panel: 'service' | 'global', log: LogEntry) => {
+      const jsonRes = parseJsonLog(log.message);
+      if (!jsonRes.isJson || !jsonRes.parsed) return { maxScroll: 0, maxJsonLines: 1, totalLines: 0 };
+      const fullLines = formatJsonToHighlightedLines(jsonRes.parsed);
+      const isService = panel === 'service';
+      const isMax = stateRef.current.maximizedPanel === (isService ? 'serviceLogs' : 'globalLogs');
+      const panelHeight = isMax 
+        ? viewport.contentHeight 
+        : (isService ? viewport.detailPanelHeight : viewport.globalLogsPanelHeight);
+      const overhead = isService ? (viewport.isUltraCompactHeight ? 2 : 4) : 4;
+      const availableLines = Math.max(2, panelHeight - overhead);
+      const maxJsonLines = Math.max(1, availableLines - 1);
+      const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
+      return { maxScroll, maxJsonLines, totalLines: fullLines.length };
+    };
+
     const getVisibleLogsSlice = (): LogEntry[] => {
       const curState = stateRef.current;
       const all = getActiveLogList();
@@ -252,7 +283,8 @@ export function useTerminalInput({
         const isWheelUp = baseButton === 64;
         if (isWheelUp) {
           const now = Date.now();
-          if (mouseX <= viewport.leftPanelWidth + 1) {
+          const isLeftPanel = state.maximizedPanel === 'services' || (state.maximizedPanel === 'none' && mouseX <= viewport.leftPanelWidth + 1);
+          if (isLeftPanel) {
             if (now - lastServiceNavTimeRef.current >= 75) {
               lastServiceNavTimeRef.current = now;
               dispatch({ type: 'NAVIGATE_SERVICES', delta: -1 });
@@ -261,14 +293,27 @@ export function useTerminalInput({
             if (now - lastLogScrollTimeRef.current >= 30) {
               lastLogScrollTimeRef.current = now;
               const detailEndRow = 1 + viewport.detailPanelHeight;
-              if (mouseY <= detailEndRow) {
-                const totalLogs = state.services[state.selectedIndex]?.logs?.length || 0;
-                const maxScroll = Math.max(0, totalLogs - (viewport.maxServiceLogs || 6));
-                dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll });
+              const isDetailTarget = state.maximizedPanel === 'serviceLogs' || (state.maximizedPanel === 'none' && mouseY <= detailEndRow);
+              if (isDetailTarget) {
+                const expLog = getActiveExpandedLog('service');
+                const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
+                if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll > 0) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'service' });
+                } else {
+                  const totalLogs = state.services[state.selectedIndex]?.logs?.length || 0;
+                  const maxScroll = Math.max(0, totalLogs - (viewport.maxServiceLogs || 6));
+                  dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll });
+                }
               } else {
-                const totalLogs = state.globalLogs.length;
-                const maxScroll = Math.max(0, totalLogs - (viewport.maxGlobalLogs || 6));
-                dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 1, maxScroll });
+                const expLog = getActiveExpandedLog('global');
+                const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
+                if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll > 0) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'global' });
+                } else {
+                  const totalLogs = state.globalLogs.length;
+                  const maxScroll = Math.max(0, totalLogs - (viewport.maxGlobalLogs || 6));
+                  dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 1, maxScroll });
+                }
               }
             }
           }
@@ -278,7 +323,8 @@ export function useTerminalInput({
         const isWheelDown = baseButton === 65;
         if (isWheelDown) {
           const now = Date.now();
-          if (mouseX <= viewport.leftPanelWidth + 1) {
+          const isLeftPanel = state.maximizedPanel === 'services' || (state.maximizedPanel === 'none' && mouseX <= viewport.leftPanelWidth + 1);
+          if (isLeftPanel) {
             if (now - lastServiceNavTimeRef.current >= 75) {
               lastServiceNavTimeRef.current = now;
               dispatch({ type: 'NAVIGATE_SERVICES', delta: 1 });
@@ -287,14 +333,27 @@ export function useTerminalInput({
             if (now - lastLogScrollTimeRef.current >= 30) {
               lastLogScrollTimeRef.current = now;
               const detailEndRow = 1 + viewport.detailPanelHeight;
-              if (mouseY <= detailEndRow) {
-                const totalLogs = state.services[state.selectedIndex]?.logs?.length || 0;
-                const maxScroll = Math.max(0, totalLogs - (viewport.maxServiceLogs || 6));
-                dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -1, maxScroll });
+              const isDetailTarget = state.maximizedPanel === 'serviceLogs' || (state.maximizedPanel === 'none' && mouseY <= detailEndRow);
+              if (isDetailTarget) {
+                const expLog = getActiveExpandedLog('service');
+                const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
+                if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'service' });
+                } else {
+                  const totalLogs = state.services[state.selectedIndex]?.logs?.length || 0;
+                  const maxScroll = Math.max(0, totalLogs - (viewport.maxServiceLogs || 6));
+                  dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -1, maxScroll });
+                }
               } else {
-                const totalLogs = state.globalLogs.length;
-                const maxScroll = Math.max(0, totalLogs - (viewport.maxGlobalLogs || 6));
-                dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -1, maxScroll });
+                const expLog = getActiveExpandedLog('global');
+                const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
+                if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
+                  dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'global' });
+                } else {
+                  const totalLogs = state.globalLogs.length;
+                  const maxScroll = Math.max(0, totalLogs - (viewport.maxGlobalLogs || 6));
+                  dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -1, maxScroll });
+                }
               }
             }
           }
@@ -381,7 +440,7 @@ export function useTerminalInput({
       return;
     }
 
-    // Escape returns focus to services (or clears selection if active)
+    // Escape returns focus to services (or clears selection / restores zoom if active)
     if (key.escape) {
       if (
         state.serviceSelectionAnchor !== null ||
@@ -390,6 +449,10 @@ export function useTerminalInput({
         state.globalCharSelection !== null
       ) {
         dispatch({ type: 'CLEAR_LOG_SELECTION' });
+        return;
+      }
+      if (state.maximizedPanel !== 'none') {
+        dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' });
         return;
       }
       dispatch({ type: 'SET_ACTIVE_PANEL', panel: 'services' });
@@ -414,41 +477,87 @@ export function useTerminalInput({
       return Math.max(0, state.globalLogs.length - (viewport.maxGlobalLogs || 6));
     };
 
-    // PageUp / PageDown or '[' / ']' for keyboard log scrolling
+    // PageUp / PageDown or '[' / ']' for keyboard log scrolling & JSON fast paging
     if (key.pageUp || input === '[') {
       if (state.activePanel === 'globalLogs') {
-        dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 4, maxScroll: getGlobalMaxScroll() });
+        const expLog = getActiveExpandedLog('global');
+        const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
+        if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -5, maxScroll: bounds.maxScroll, panel: 'global' });
+        } else {
+          dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: 4, maxScroll: getGlobalMaxScroll() });
+        }
       } else {
-        dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 4, maxScroll: getServiceMaxScroll() });
+        const expLog = getActiveExpandedLog('service');
+        const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
+        if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -5, maxScroll: bounds.maxScroll, panel: 'service' });
+        } else {
+          dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 4, maxScroll: getServiceMaxScroll() });
+        }
       }
       return;
     }
 
     if (key.pageDown || input === ']') {
       if (state.activePanel === 'globalLogs') {
-        dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -4, maxScroll: getGlobalMaxScroll() });
+        const expLog = getActiveExpandedLog('global');
+        const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
+        if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: bounds.maxScroll, panel: 'global' });
+        } else {
+          dispatch({ type: 'SCROLL_GLOBAL_LOGS', delta: -4, maxScroll: getGlobalMaxScroll() });
+        }
       } else {
-        dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -4, maxScroll: getServiceMaxScroll() });
+        const expLog = getActiveExpandedLog('service');
+        const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
+        if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 5, maxScroll: bounds.maxScroll, panel: 'service' });
+        } else {
+          dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: -4, maxScroll: getServiceMaxScroll() });
+        }
       }
       return;
     }
 
     if (key.home) {
       if (state.activePanel === 'globalLogs') {
-        const maxScroll = getGlobalMaxScroll();
-        dispatch({ type: 'SET_GLOBAL_LOG_SCROLL', value: maxScroll, maxScroll });
+        const expLog = getActiveExpandedLog('global');
+        if (expLog && state.globalJsonLineScroll > 0) {
+          dispatch({ type: 'RESET_JSON_LINE_SCROLL', panel: 'global' });
+        } else {
+          const maxScroll = getGlobalMaxScroll();
+          dispatch({ type: 'SET_GLOBAL_LOG_SCROLL', value: maxScroll, maxScroll });
+        }
       } else {
-        const maxScroll = getServiceMaxScroll();
-        dispatch({ type: 'SET_SERVICE_LOG_SCROLL', value: maxScroll, maxScroll });
+        const expLog = getActiveExpandedLog('service');
+        if (expLog && state.serviceJsonLineScroll > 0) {
+          dispatch({ type: 'RESET_JSON_LINE_SCROLL', panel: 'service' });
+        } else {
+          const maxScroll = getServiceMaxScroll();
+          dispatch({ type: 'SET_SERVICE_LOG_SCROLL', value: maxScroll, maxScroll });
+        }
       }
       return;
     }
 
     if (key.end) {
       if (state.activePanel === 'globalLogs') {
-        dispatch({ type: 'SET_GLOBAL_LOG_SCROLL', value: 0 });
+        const expLog = getActiveExpandedLog('global');
+        const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
+        if (expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: bounds.maxScroll, maxScroll: bounds.maxScroll, panel: 'global' });
+        } else {
+          dispatch({ type: 'SET_GLOBAL_LOG_SCROLL', value: 0 });
+        }
       } else {
-        dispatch({ type: 'SET_SERVICE_LOG_SCROLL', value: 0 });
+        const expLog = getActiveExpandedLog('service');
+        const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
+        if (expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: bounds.maxScroll, maxScroll: bounds.maxScroll, panel: 'service' });
+        } else {
+          dispatch({ type: 'SET_SERVICE_LOG_SCROLL', value: 0 });
+        }
       }
       return;
     }
@@ -460,15 +569,11 @@ export function useTerminalInput({
       if (state.activePanel === 'services') {
         dispatch({ type: 'NAVIGATE_SERVICES', delta: -1 });
       } else if (state.activePanel === 'serviceLogs') {
-        const curLog = getSelectedLog();
-        const isExp = curLog && !!state.serviceExpandedLogIds[curLog.id];
-        const jsonRes = isExp ? parseJsonLog(curLog.message) : null;
-        const fullLines = jsonRes?.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : null;
-        const maxJsonLines = Math.max(1, (viewport.contentHeight || 20) - 8);
-        const maxJsonScroll = fullLines && fullLines.length > maxJsonLines ? fullLines.length - maxJsonLines : 0;
+        const expLog = getActiveExpandedLog('service');
+        const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
 
-        if (!isShift && isExp && state.serviceJsonLineScroll > 0) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: maxJsonScroll, panel: 'service' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'service' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
@@ -479,15 +584,11 @@ export function useTerminalInput({
           dispatch({ type: 'SCROLL_SERVICE_LOGS', delta: 1, maxScroll: getServiceMaxScroll() });
         }
       } else if (state.activePanel === 'globalLogs') {
-        const curLog = getSelectedLog();
-        const isExp = curLog && !!state.globalExpandedLogIds[curLog.id];
-        const jsonRes = isExp ? parseJsonLog(curLog.message) : null;
-        const fullLines = jsonRes?.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : null;
-        const maxJsonLines = Math.max(1, (viewport.contentHeight || 20) - 6);
-        const maxJsonScroll = fullLines && fullLines.length > maxJsonLines ? fullLines.length - maxJsonLines : 0;
+        const expLog = getActiveExpandedLog('global');
+        const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
 
-        if (!isShift && isExp && state.globalJsonLineScroll > 0) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: maxJsonScroll, panel: 'global' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll > 0) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: -1, maxScroll: bounds.maxScroll, panel: 'global' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
@@ -506,15 +607,11 @@ export function useTerminalInput({
       if (state.activePanel === 'services') {
         dispatch({ type: 'NAVIGATE_SERVICES', delta: 1 });
       } else if (state.activePanel === 'serviceLogs') {
-        const curLog = getSelectedLog();
-        const isExp = curLog && !!state.serviceExpandedLogIds[curLog.id];
-        const jsonRes = isExp ? parseJsonLog(curLog.message) : null;
-        const fullLines = jsonRes?.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : null;
-        const maxJsonLines = Math.max(1, (viewport.contentHeight || 20) - 8);
-        const maxJsonScroll = fullLines && fullLines.length > maxJsonLines ? fullLines.length - maxJsonLines : 0;
+        const expLog = getActiveExpandedLog('service');
+        const bounds = expLog ? getJsonScrollBounds('service', expLog) : { maxScroll: 0 };
 
-        if (!isShift && isExp && state.serviceJsonLineScroll < maxJsonScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: maxJsonScroll, panel: 'service' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && state.serviceJsonLineScroll < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'service' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
@@ -529,15 +626,11 @@ export function useTerminalInput({
           }
         }
       } else if (state.activePanel === 'globalLogs') {
-        const curLog = getSelectedLog();
-        const isExp = curLog && !!state.globalExpandedLogIds[curLog.id];
-        const jsonRes = isExp ? parseJsonLog(curLog.message) : null;
-        const fullLines = jsonRes?.isJson && jsonRes.parsed ? formatJsonToHighlightedLines(jsonRes.parsed) : null;
-        const maxJsonLines = Math.max(1, (viewport.contentHeight || 20) - 6);
-        const maxJsonScroll = fullLines && fullLines.length > maxJsonLines ? fullLines.length - maxJsonLines : 0;
+        const expLog = getActiveExpandedLog('global');
+        const bounds = expLog ? getJsonScrollBounds('global', expLog) : { maxScroll: 0 };
 
-        if (!isShift && isExp && state.globalJsonLineScroll < maxJsonScroll) {
-          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: maxJsonScroll, panel: 'global' });
+        if (!isShift && expLog && bounds.maxScroll > 0 && state.globalJsonLineScroll < bounds.maxScroll) {
+          dispatch({ type: 'SCROLL_JSON_LINES', delta: 1, maxScroll: bounds.maxScroll, panel: 'global' });
         } else if (isShift) {
           const visible = getVisibleLogsSlice();
           const maxIdx = Math.max(0, visible.length - 1);
@@ -647,23 +740,9 @@ export function useTerminalInput({
       return;
     }
 
-    // Toggle Mouse Mode (m) - switch between TUI interactive drag/click and native terminal drag
-    if (input === 'm' || input === 'M') {
-      const nextMode = stateRef.current.mouseMode === 'interactive' ? 'native' : 'interactive';
-      dispatch({ type: 'TOGGLE_MOUSE_MODE' });
-      if (nextMode === 'native') {
-        dispatch({
-          type: 'SHOW_TOAST',
-          message: '🖱️ Native Mouse: Terminal OS text drag enabled. Press "m" for TUI mode.',
-          durationMs: 3500
-        });
-      } else {
-        dispatch({
-          type: 'SHOW_TOAST',
-          message: '🖱️ TUI Mouse: Click buttons, drag-select text/lines, and scroll.',
-          durationMs: 3000
-        });
-      }
+    // Toggle Maximize / Zoom Panel (z / Z)
+    if (input === 'z' || input === 'Z') {
+      dispatch({ type: 'TOGGLE_MAXIMIZE_PANEL' });
       return;
     }
 
@@ -732,7 +811,7 @@ export function useTerminalInput({
           dispatch({ type: 'SHOW_TOAST', message: `✔ Copied ${selectedEntries.length} selected log lines to clipboard!` });
         } else if (targetLog) {
           const jsonRes = parseJsonLog(targetLog.message);
-          const isExpanded = !!(jsonRes.isJson && (state.expandedLogIds[targetLog.id] || state.isWrapMode));
+          const isExpanded = !!(jsonRes.isJson && (panel === 'service' ? state.serviceExpandedLogIds[targetLog.id] : state.globalExpandedLogIds[targetLog.id]));
           if (isExpanded && jsonRes.parsed) {
             const prettyText = prettyPrintJson(targetLog.message);
             copyToClipboard(prettyText);

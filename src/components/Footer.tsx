@@ -8,23 +8,24 @@ export interface FooterProps {
   isConnected?: boolean;
   activePanel?: ActivePanel;
   width?: number;
-  mouseMode?: 'interactive' | 'native';
+  isMaximized?: boolean;
   selectionText?: string | null;
   onToggleHelp?: () => void;
   onSwitchConfig?: () => void;
-  onToggleMouseMode?: () => void;
+  onToggleMaximize?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = React.memo(({ 
   isConnected = true, 
   activePanel = 'services', 
   width = 120,
-  mouseMode = 'interactive',
+  isMaximized = false,
   selectionText = null,
   onToggleHelp,
   onSwitchConfig,
-  onToggleMouseMode
+  onToggleMaximize
 }) => {
+  const isCompact = width < 115;
   const isNarrow = width < 85;
 
   return (
@@ -33,6 +34,8 @@ export const Footer: React.FC<FooterProps> = React.memo(({
       justifyContent="space-between" 
       alignItems="center" 
       width="100%" 
+      height={1}
+      overflow="hidden"
       backgroundColor={theme.colors.canvas}
       marginTop={0} 
       paddingX={1}
@@ -85,17 +88,16 @@ export const Footer: React.FC<FooterProps> = React.memo(({
           </>
         )}
 
-        <Clickable onClick={() => onToggleMouseMode?.()} flexDirection="row">
+        <Clickable onClick={() => onToggleMaximize?.()} flexDirection="row">
           <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
-            <Text color={theme.colors.accent} bold>m</Text>
+            <Text color={theme.colors.accent} bold>z</Text>
           </Box>
-          <Text color={mouseMode === 'native' ? theme.colors.running : theme.colors.accent} bold>
-            {mouseMode === 'native' ? 'Native-Drag ' : 'TUI-Select '}
+          <Text color={isMaximized ? theme.colors.running : theme.colors.accent} bold>
+            {isMaximized ? 'Restore ' : 'Zoom '}
           </Text>
         </Clickable>
 
-
-        {!isNarrow && (
+        {!isCompact && (
           <>
             <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
               <Text color={theme.colors.accent} bold>w</Text>

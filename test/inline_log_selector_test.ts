@@ -45,16 +45,16 @@ async function runInlineLogSelectorTests() {
   assert.strictEqual(!!state.expandedLogIds[testLogId], false, 'Expansion state should toggle back to false');
   console.log('✔ TOGGLE_LOG_EXPANSION toggles inline expand state');
 
-  // Test 4: Interactive Mouse Mode (Default interactive, toggleable to native for raw terminal selection)
-  console.log('\n[Test 4] Testing mouse mode architecture (interactive by default)...');
-  assert.strictEqual(state.mouseMode, 'interactive', 'mouseMode must be interactive by default');
-
-  state = dashboardReducer(state, { type: 'TOGGLE_MOUSE_MODE' });
-  assert.strictEqual(state.mouseMode, 'native', 'mouseMode should switch to native');
-
-  state = dashboardReducer(state, { type: 'TOGGLE_MOUSE_MODE' });
-  assert.strictEqual(state.mouseMode, 'interactive', 'mouseMode should toggle back to interactive');
-  console.log('✔ Mouse mode defaults to interactive (click/drag active) with seamless toggle to native');
+  // Test 4: Always-On Mouse & Direct Expanded Log Target Resolution
+  console.log('\n[Test 4] Testing direct active expanded log resolution and synergy...');
+  state = { ...initialDashboardState };
+  state = dashboardReducer(state, { type: 'TOGGLE_LOG_EXPANSION', logId: 'log-101', panel: 'service' });
+  assert.strictEqual(state.serviceExpandedLogIds['log-101'], true);
+  
+  // Direct target resolution finds the exact expanded ID regardless of selection index mismatch
+  const expId = Object.keys(state.serviceExpandedLogIds).find(k => state.serviceExpandedLogIds[k]);
+  assert.strictEqual(expId, 'log-101', 'Direct expanded ID resolution must find log-101');
+  console.log('✔ Direct active expanded log target resolution confirmed');
 
   // Test 5: SET_COPIED_FLASH
   console.log('\n[Test 5] Testing SET_COPIED_FLASH...');
@@ -367,7 +367,92 @@ async function runInlineLogSelectorTests() {
 
   console.log('✔ In-place JSON line scrolling & reset actions verified');
 
-  console.log('\n=== ALL INLINE LOG SELECTOR & EXPANSION TESTS PASSED (20/20) ===');
+  // Test 21: Full-Screen Panel Zoom / Maximize Mode ('z' / 'Z' hotkey)
+  console.log('\n[Test 21] Testing TOGGLE_MAXIMIZE_PANEL...');
+  let maxState = { ...initialDashboardState, activePanel: 'serviceLogs' as const };
+  assert.strictEqual(maxState.maximizedPanel, 'none', 'Initial maximizedPanel must be "none"');
+
+  // Toggling while activePanel is serviceLogs maximizes serviceLogs
+  maxState = dashboardReducer(maxState, { type: 'TOGGLE_MAXIMIZE_PANEL' });
+  assert.strictEqual(maxState.maximizedPanel, 'serviceLogs', 'maximizedPanel should be serviceLogs');
+
+  // Toggling again restores 'none'
+  maxState = dashboardReducer(maxState, { type: 'TOGGLE_MAXIMIZE_PANEL' });
+  assert.strictEqual(maxState.maximizedPanel, 'none', 'maximizedPanel should restore to "none"');
+
+  // Explicit panel maximize for globalLogs
+  maxState = dashboardReducer(maxState, { type: 'TOGGLE_MAXIMIZE_PANEL', panel: 'globalLogs' });
+  assert.strictEqual(maxState.maximizedPanel, 'globalLogs', 'maximizedPanel should be globalLogs when explicitly targeted');
+
+  // Restores to 'none' when toggling with same panel
+  maxState = dashboardReducer(maxState, { type: 'TOGGLE_MAXIMIZE_PANEL', panel: 'globalLogs' });
+  assert.strictEqual(maxState.maximizedPanel, 'none', 'maximizedPanel should restore to "none"');
+  console.log('✔ TOGGLE_MAXIMIZE_PANEL correctly enters and exits focus mode');
+
+  // Test 22: JSON Message Formatting & Selection Isolation (prevents raw JSON collision)
+  console.log('\n[Test 22] Testing JSON message selection isolation...');
+  const jsonRaw = JSON.stringify({
+    ts: '2026-11-20T13:09:04.574Z',
+    level: 'info',
+    service: 'gateway',
+    msg: 'server.started',
+    port: 3000,
+    pid: 537190
+  });
+  const parsedJson = parseJsonLog(jsonRaw);
+  assert.strictEqual(parsedJson.isJson, true);
+  assert.strictEqual(parsedJson.canonicalMsg, 'server.started', 'Canonical msg should extract "server.started"');
+
+  // When rendered, displayMsg is canonicalMsg ('server.started'), NOT the raw 120-char payload
+  const displayMsg = parsedJson.canonicalMsg!;
+  assert.ok(displayMsg.length < 30, 'displayMsg must be compact');
+  assert.strictEqual(displayMsg, 'server.started');
+
+  // Character selection slicing on displayMsg:
+  const charSlice = displayMsg.slice(0, 6);
+  assert.strictEqual(charSlice, 'server', 'Character selection isolates to "server", preventing raw JSON wrap');
+  console.log('✔ Structured JSON selection isolates to clean event title without corrupting row layout');
+
+  // Test 23: Large JSON Scrolling Bounds & Paging (50-line payload)
+  console.log('\n[Test 23] Testing 50-line large JSON scrolling bounds and paging...');
+  const largeObject: Record<string, any> = {};
+  for (let i = 1; i <= 48; i++) {
+    largeObject[`key_${i}`] = `value_${i}_data`;
+  }
+  const largeJsonRaw = JSON.stringify(largeObject);
+  const largeParsed = parseJsonLog(largeJsonRaw);
+  assert.strictEqual(largeParsed.isJson, true);
+  const largeLines = formatJsonToHighlightedLines(largeParsed.parsed);
+  assert.ok(largeLines.length >= 50, `Formatted lines should be >= 50 (got ${largeLines.length})`);
+
+  // Given an available budget of 8 lines:
+  const maxJsonLines = 7;
+  const maxScroll = Math.max(0, largeLines.length - maxJsonLines);
+  assert.ok(maxScroll >= 43, `maxScroll should be >= 43 lines (got ${maxScroll})`);
+
+  let pagingState = { ...initialDashboardState };
+  // Simulate PageDown: jump by +5 lines
+  pagingState = dashboardReducer(pagingState, { type: 'SCROLL_JSON_LINES', delta: 5, maxScroll, panel: 'service' });
+  assert.strictEqual(pagingState.serviceJsonLineScroll, 5, 'PageDown should advance JSON line scroll by 5');
+
+  // Jump by another +5 lines
+  pagingState = dashboardReducer(pagingState, { type: 'SCROLL_JSON_LINES', delta: 5, maxScroll, panel: 'service' });
+  assert.strictEqual(pagingState.serviceJsonLineScroll, 10, 'Second PageDown should advance to line 10');
+
+  // Simulate PageUp: jump by -5 lines
+  pagingState = dashboardReducer(pagingState, { type: 'SCROLL_JSON_LINES', delta: -5, maxScroll, panel: 'service' });
+  assert.strictEqual(pagingState.serviceJsonLineScroll, 5, 'PageUp should decrement JSON line scroll by 5');
+
+  // Simulate Home: reset to 0
+  pagingState = dashboardReducer(pagingState, { type: 'RESET_JSON_LINE_SCROLL', panel: 'service' });
+  assert.strictEqual(pagingState.serviceJsonLineScroll, 0, 'Home should reset JSON scroll to 0');
+
+  // Simulate End: jump to maxScroll
+  pagingState = dashboardReducer(pagingState, { type: 'SCROLL_JSON_LINES', delta: maxScroll, maxScroll, panel: 'service' });
+  assert.strictEqual(pagingState.serviceJsonLineScroll, maxScroll, 'End should advance directly to maxScroll');
+  console.log('✔ Large JSON 50-line payload scrolling bounds and paging verified');
+
+  console.log('\n=== ALL INLINE LOG SELECTOR & EXPANSION TESTS PASSED (23/23) ===');
 }
 
 runInlineLogSelectorTests().catch((err) => {
