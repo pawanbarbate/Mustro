@@ -5,6 +5,7 @@ import {
   copyToClipboardDetailed,
   getCopyFeedbackMessage,
   formatLogEntry,
+  stripAnsiEscapeCodes,
   formatServiceErrorSummary,
   formatAllErrors
 } from '../src/utils/clipboard.js';
@@ -30,8 +31,18 @@ async function runClipboardTests() {
   assert.strictEqual(decoded, testMsg, 'Decoded OSC 52 base64 must match original text verbatim');
   console.log('✔ OSC 52 sequence generation & base64 roundtrip verified');
 
-  // Test 2: formatLogEntry
-  console.log('\n[Test 2] Testing formatLogEntry with un-truncated text...');
+  // Test 2: strip ANSI escape sequences from copied plain text
+  console.log('\n[Test 2] Testing ANSI escape sequence removal...');
+  const coloredLog = "[10:59:08] [gateway] [INFO] this is log { number: \x1b[33m66666\x1b[39m, name: \x1b[32m'pawan'\x1b[39m }";
+  assert.strictEqual(
+    stripAnsiEscapeCodes(coloredLog),
+    "[10:59:08] [gateway] [INFO] this is log { number: 66666, name: 'pawan' }"
+  );
+  assert.strictEqual(stripAnsiEscapeCodes('plain text'), 'plain text', 'Plain text should remain unchanged');
+  console.log('✔ ANSI escape sequences removed while preserving log text');
+
+  // Test 3: formatLogEntry
+  console.log('\n[Test 3] Testing formatLogEntry with un-truncated text...');
   const sampleLog: LogEntry = {
     id: 'log-1',
     timestamp: '14:22:05',
@@ -46,8 +57,8 @@ async function runClipboardTests() {
   );
   console.log('✔ formatLogEntry output verified:', formattedLog);
 
-  // Test 3: formatServiceErrorSummary
-  console.log('\n[Test 3] Testing formatServiceErrorSummary report generation...');
+  // Test 4: formatServiceErrorSummary
+  console.log('\n[Test 4] Testing formatServiceErrorSummary report generation...');
   const sampleService: Service = {
     id: 'svc-payment',
     name: 'payment-svc',
@@ -80,8 +91,8 @@ async function runClipboardTests() {
   assert.ok(summary.includes('FATAL: database "payments_db" does not exist'), 'Summary contains last error');
   console.log('✔ formatServiceErrorSummary structure verified');
 
-  // Test 4: formatAllErrors
-  console.log('\n[Test 4] Testing formatAllErrors multi-error dump...');
+  // Test 5: formatAllErrors
+  console.log('\n[Test 5] Testing formatAllErrors multi-error dump...');
   const multiErrorService: Service = {
     ...sampleService,
     errorLogs: [
@@ -95,8 +106,8 @@ async function runClipboardTests() {
   assert.ok(allErrorsDump.includes('#2 [14:02:00] [ERROR]:\nSecond error stack trace'), 'Includes error 2');
   console.log('✔ formatAllErrors multi-error dump verified');
 
-  // Test 5: copyToClipboard & copyToClipboardDetailed executes without throwing
-  console.log('\n[Test 5] Testing copyToClipboard execution...');
+  // Test 6: copyToClipboard & copyToClipboardDetailed executes without throwing
+  console.log('\n[Test 6] Testing copyToClipboard execution...');
   const copyResult = await copyToClipboard('DevPulse copy test string');
   assert.ok(typeof copyResult === 'boolean', 'copyToClipboard must return a boolean');
   const detailed = await copyToClipboardDetailed('DevPulse detailed test');
@@ -113,8 +124,8 @@ async function runClipboardTests() {
   assert.ok(!msgUnconfirmed.includes('✔ Copied'), 'Unconfirmed OSC 52 feedback must not claim copied content');
   console.log('✔ copyToClipboard & copyToClipboardDetailed executed successfully');
 
-  // Test 6: Reducer state management for Toast and Log Inspector
-  console.log('\n[Test 6] Testing Reducer Toast & Inspector actions...');
+  // Test 7: Reducer state management for Toast and Log Inspector
+  console.log('\n[Test 7] Testing Reducer Toast & Inspector actions...');
   let state = initialDashboardState;
 
   // 6a. SHOW_TOAST
@@ -132,7 +143,7 @@ async function runClipboardTests() {
   assert.strictEqual(state.toastExpiresAt, undefined);
   console.log('✔ Reducer toast actions verified');
 
-  console.log('\n=== ALL CLIPBOARD & LOG SHARING TESTS PASSED (6/6) ===');
+  console.log('\n=== ALL CLIPBOARD & LOG SHARING TESTS PASSED (7/7) ===');
 }
 
 runClipboardTests().catch((err) => {

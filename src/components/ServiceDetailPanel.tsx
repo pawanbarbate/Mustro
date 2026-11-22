@@ -1,10 +1,10 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { Service, ActiveTab, LogEntry } from '../types/index.js';
+import { Service, ActiveTab, JsonTextSelection, LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme } from '../theme/theme.js';
 import useSpinner from '../hooks/useSpinner.js';
-import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId } from '../utils/logFormatter.js';
+import { parseJsonLog, formatJsonToHighlightedLines, HighlightedLine, JsonLogParseResult, calculateVisibleLogWindow, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId, getHighlightedSelectionSegments } from '../utils/logFormatter.js';
 
 export interface ServiceDetailPanelProps {
   service?: Service;
@@ -23,6 +23,7 @@ export interface ServiceDetailPanelProps {
   selectionAnchor?: number | null;
   selectionAnchorLogId?: string | number | null;
   charSelection?: { start: number; end: number } | null;
+  jsonTextSelection?: JsonTextSelection | null;
   jsonLineScroll?: number;
   jsonLineScrollById?: Record<string | number, number>;
   expandedLogIds?: Record<string | number, boolean>;
@@ -64,6 +65,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   selectionAnchor = null,
   selectionAnchorLogId = null,
   charSelection = null,
+  jsonTextSelection = null,
   jsonLineScroll = 0,
   jsonLineScrollById = {},
   expandedLogIds = {},
@@ -574,8 +576,9 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
             // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings
             const isExpanded = !!(jsonResult.isJson && expandedLogIds[log.id]);
 
-            let highlightedLines: { tokens: any[] }[] = [];
+            let highlightedLines: HighlightedLine[] = [];
             let jsonScrollInfo: { start: number; end: number; total: number } | null = null;
+            let jsonLineStart = 0;
             if (isExpanded && jsonResult.parsed && maxJsonLines > 0) {
               const fullLines = formatJsonToHighlightedLines(jsonResult.parsed);
               if (fullLines.length <= maxJsonLines) {
@@ -585,6 +588,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                 const storedOffset = jsonLineScrollById[log.id]
                   ?? (Object.keys(jsonLineScrollById).length === 0 ? jsonLineScroll : 0);
                 const offset = Math.max(0, Math.min(maxScroll, storedOffset));
+                jsonLineStart = offset;
                 highlightedLines = fullLines.slice(offset, offset + maxJsonLines);
                 jsonScrollInfo = {
                   start: offset + 1,
@@ -707,18 +711,34 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
                   <Box flexDirection="row" paddingLeft={12} marginTop={0} marginBottom={0}>
                     <Box flexDirection="column" flexGrow={1}>
                       {highlightedLines.map((hl, hlIdx) => (
-                        <Box key={hlIdx} flexDirection="row" height={1} overflow="hidden">
-                          {hl.tokens.map((tok, tokIdx) => (
-                            <Text
-                              key={tokIdx}
-                              color={tok.color}
-                              bold={tok.bold}
-                              dimColor={tok.dim}
-                            >
-                              {tok.text}
-                            </Text>
-                          ))}
-                        </Box>
+                        <Clickable
+                          key={hlIdx}
+                          id={`service-json-line-${index}-${jsonLineStart + hlIdx}`}
+                          textStartX={0}
+                          width="100%"
+                          onClick={() => {
+                            onFocus?.();
+                            onSelectLogIndex?.(index, false, log.id);
+                          }}
+                        >
+                          <Box flexDirection="row" height={1} overflow="hidden" width="100%">
+                            {getHighlightedSelectionSegments(
+                              hl,
+                              jsonLineStart + hlIdx,
+                              jsonTextSelection?.logId === log.id ? jsonTextSelection : null
+                            ).map((segment, segmentIdx) => (
+                              <Text
+                                key={segmentIdx}
+                                color={segment.selected ? '#FFFFFF' : segment.color}
+                                backgroundColor={segment.selected ? '#0284C7' : undefined}
+                                bold={segment.bold}
+                                dimColor={segment.dim}
+                              >
+                                {segment.text}
+                              </Text>
+                            ))}
+                          </Box>
+                        </Clickable>
                       ))}
                     </Box>
                     {jsonScrollInfo && jsonScrollInfo.total > maxJsonLines && (

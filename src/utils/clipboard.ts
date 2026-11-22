@@ -3,6 +3,16 @@ import fs from 'fs';
 import { LogEntry, Service } from '../types/index.js';
 
 /**
+ * Remove ANSI escape sequences so copied output is readable in plain-text apps.
+ */
+export function stripAnsiEscapeCodes(text: string): string {
+  return text.replace(
+    /\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\)|[ -/]*[@-~])|\u009B[0-?]*[ -/]*[@-~]|\u009D[^\u0007]*(?:\u0007|\u009C)/g,
+    ''
+  );
+}
+
+/**
  * Generate OSC 52 terminal clipboard escape sequence.
  * Supports tmux and screen wrapping.
  */
@@ -22,7 +32,7 @@ export function getOsc52Sequence(text: string): string {
  */
 export async function copyViaOsCommand(text: string): Promise<boolean> {
   try {
-    await clipboard.write(text);
+    await clipboard.write(stripAnsiEscapeCodes(text));
     return true;
   } catch {
     return false;
@@ -34,7 +44,7 @@ export async function copyViaOsCommand(text: string): Promise<boolean> {
  */
 export function writeOsc52(text: string): boolean {
   try {
-    const osc52 = getOsc52Sequence(text);
+    const osc52 = getOsc52Sequence(stripAnsiEscapeCodes(text));
     if (process.platform !== 'win32') {
       const ttyFd = fs.openSync('/dev/tty', 'w');
       try {

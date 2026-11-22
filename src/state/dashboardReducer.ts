@@ -6,7 +6,8 @@ import {
   ServiceStatus,
   SystemMetrics,
   LogEntry,
-  DevPulseConfig
+  DevPulseConfig,
+  JsonTextSelection
 } from '../types/index.js';
 import {
   INITIAL_SERVICES,
@@ -58,6 +59,8 @@ export interface DashboardState {
   globalSelectionAnchorLogId: string | number | null;
   serviceCharSelection: { start: number; end: number } | null;
   globalCharSelection: { start: number; end: number } | null;
+  serviceJsonTextSelection: JsonTextSelection | null;
+  globalJsonTextSelection: JsonTextSelection | null;
   serviceJsonLineScroll: number;
   serviceJsonLineScrollById: Record<string | number, number>;
   globalJsonLineScroll: number;
@@ -100,6 +103,8 @@ export const initialDashboardState: DashboardState = {
   globalSelectionAnchorLogId: null,
   serviceCharSelection: null,
   globalCharSelection: null,
+  serviceJsonTextSelection: null,
+  globalJsonTextSelection: null,
   serviceJsonLineScroll: 0,
   serviceJsonLineScrollById: {},
   globalJsonLineScroll: 0,
@@ -195,6 +200,7 @@ export type DashboardAction =
   | { type: 'SET_LOG_SELECTION_RANGE'; anchorIndex: number | null; headIndex: number; anchorLogId?: string | number | null; headLogId?: string | number; panel?: 'service' | 'global' }
   | { type: 'EXTEND_CHAR_SELECTION'; delta: number; maxLen: number; panel?: 'service' | 'global' }
   | { type: 'SET_CHAR_SELECTION_RANGE'; start: number; end: number; logId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'SET_JSON_TEXT_SELECTION'; selection: JsonTextSelection | null; panel?: 'service' | 'global' }
   | { type: 'CLEAR_LOG_SELECTION'; panel?: 'service' | 'global' }
   | { type: 'SCROLL_JSON_LINES'; delta: number; maxScroll: number; logId?: string | number; panel?: 'service' | 'global' }
   | { type: 'RESET_JSON_LINE_SCROLL'; logId?: string | number; panel?: 'service' | 'global' }
@@ -221,6 +227,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         globalSelectionAnchorLogId: null,
         serviceCharSelection: null,
         globalCharSelection: null,
+        serviceJsonTextSelection: null,
+        globalJsonTextSelection: null,
         serviceJsonLineScroll: 0,
         globalJsonLineScroll: 0,
         serviceExpandedLogIds: {},
@@ -244,6 +252,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         globalSelectionAnchorLogId: null,
         serviceCharSelection: null,
         globalCharSelection: null,
+        serviceJsonTextSelection: null,
+        globalJsonTextSelection: null,
         serviceJsonLineScroll: 0,
         globalJsonLineScroll: 0,
         serviceExpandedLogIds: {},
@@ -272,6 +282,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         globalSelectionAnchorLogId: null,
         serviceCharSelection: null,
         globalCharSelection: null,
+        serviceJsonTextSelection: null,
+        globalJsonTextSelection: null,
         serviceJsonLineScroll: 0,
         globalJsonLineScroll: 0,
         serviceExpandedLogIds: {},
@@ -599,6 +611,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           serviceSelectionAnchor: null,
           serviceSelectionAnchorLogId: null,
           serviceCharSelection: null,
+          serviceJsonTextSelection: null,
           serviceJsonLineScroll: 0
         };
       } else {
@@ -610,6 +623,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           globalSelectionAnchor: null,
           globalSelectionAnchorLogId: null,
           globalCharSelection: null,
+          globalJsonTextSelection: null,
           globalJsonLineScroll: 0
         };
       }
@@ -627,6 +641,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           serviceSelectionAnchor: null,
           serviceSelectionAnchorLogId: null,
           serviceCharSelection: null,
+          serviceJsonTextSelection: null,
           serviceJsonLineScroll: 0
         };
       } else {
@@ -639,6 +654,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           globalSelectionAnchor: null,
           globalSelectionAnchorLogId: null,
           globalCharSelection: null,
+          globalJsonTextSelection: null,
           globalJsonLineScroll: 0
         };
       }
@@ -660,6 +676,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           serviceSelectedLogId: action.headLogId ?? null,
           selectedLogIndex: nextIndex,
           serviceCharSelection: null,
+          serviceJsonTextSelection: null,
           serviceJsonLineScroll: 0
         };
       } else {
@@ -676,6 +693,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           globalSelectedLogId: action.headLogId ?? null,
           selectedLogIndex: nextIndex,
           globalCharSelection: null,
+          globalJsonTextSelection: null,
           globalJsonLineScroll: 0
         };
       }
@@ -693,6 +711,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           serviceSelectedLogId: action.headLogId ?? null,
           selectedLogIndex: head,
           serviceCharSelection: null,
+          serviceJsonTextSelection: null,
           serviceJsonLineScroll: 0
         };
       } else {
@@ -704,6 +723,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           globalSelectedLogId: action.headLogId ?? null,
           selectedLogIndex: head,
           globalCharSelection: null,
+          globalJsonTextSelection: null,
           globalJsonLineScroll: 0
         };
       }
@@ -730,7 +750,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           serviceSelectionAnchor: null,
           serviceSelectionAnchorLogId: null,
-          serviceCharSelection: nextRange
+          serviceCharSelection: nextRange,
+          serviceJsonTextSelection: null
         };
       } else {
         const cur = state.globalCharSelection;
@@ -751,7 +772,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           globalSelectionAnchor: null,
           globalSelectionAnchorLogId: null,
-          globalCharSelection: nextRange
+          globalCharSelection: nextRange,
+          globalJsonTextSelection: null
         };
       }
     }
@@ -767,7 +789,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           serviceSelectionAnchor: null,
           serviceSelectionAnchorLogId: null,
           serviceSelectedLogId: action.logId ?? state.serviceSelectedLogId,
-          serviceCharSelection: range
+          serviceCharSelection: range,
+          serviceJsonTextSelection: null
         };
       } else {
         return {
@@ -775,7 +798,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           globalSelectionAnchor: null,
           globalSelectionAnchorLogId: null,
           globalSelectedLogId: action.logId ?? state.globalSelectedLogId,
-          globalCharSelection: range
+          globalCharSelection: range,
+          globalJsonTextSelection: null
         };
       }
     }
@@ -787,16 +811,41 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           serviceSelectionAnchor: null,
           serviceSelectionAnchorLogId: null,
-          serviceCharSelection: null
+          serviceCharSelection: null,
+          serviceJsonTextSelection: null
         };
       } else {
         return {
           ...state,
           globalSelectionAnchor: null,
           globalSelectionAnchorLogId: null,
-          globalCharSelection: null
+          globalCharSelection: null,
+          globalJsonTextSelection: null
         };
       }
+    }
+
+    case 'SET_JSON_TEXT_SELECTION': {
+      const { selection } = action;
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceSelectionAnchorLogId: null,
+          serviceCharSelection: null,
+          serviceJsonTextSelection: selection,
+          serviceSelectedLogId: selection?.logId ?? state.serviceSelectedLogId
+        };
+      }
+      return {
+        ...state,
+        globalSelectionAnchor: null,
+        globalSelectionAnchorLogId: null,
+        globalCharSelection: null,
+        globalJsonTextSelection: selection,
+        globalSelectedLogId: selection?.logId ?? state.globalSelectedLogId
+      };
     }
 
     case 'SCROLL_JSON_LINES': {
@@ -809,6 +858,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           return {
             ...state,
             serviceJsonLineScroll: nextOffset,
+            serviceJsonTextSelection: null,
             serviceJsonLineScrollById: {
               ...state.serviceJsonLineScrollById,
               [action.logId]: logOffset
@@ -817,13 +867,15 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         }
         return {
           ...state,
-          serviceJsonLineScroll: nextOffset
+          serviceJsonLineScroll: nextOffset,
+          serviceJsonTextSelection: null
         };
       } else {
         const nextOffset = Math.max(0, Math.min(action.maxScroll, state.globalJsonLineScroll + action.delta));
         return {
           ...state,
-          globalJsonLineScroll: nextOffset
+          globalJsonLineScroll: nextOffset,
+          globalJsonTextSelection: null
         };
       }
     }
@@ -835,6 +887,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           return {
             ...state,
             serviceJsonLineScroll: 0,
+            serviceJsonTextSelection: null,
             serviceJsonLineScrollById: {
               ...state.serviceJsonLineScrollById,
               [action.logId]: 0
@@ -843,12 +896,14 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         }
         return {
           ...state,
-          serviceJsonLineScroll: 0
+          serviceJsonLineScroll: 0,
+          serviceJsonTextSelection: null
         };
       } else {
         return {
           ...state,
-          globalJsonLineScroll: 0
+          globalJsonLineScroll: 0,
+          globalJsonTextSelection: null
         };
       }
     }
@@ -868,6 +923,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         return {
           ...state,
           serviceExpandedLogIds: nextServiceExpanded,
+          serviceJsonTextSelection: null,
           serviceJsonLineScrollById: nextServiceScrollById,
           expandedLogIds: nextServiceExpanded
         };
@@ -879,6 +935,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         return {
           ...state,
           globalExpandedLogIds: nextGlobalExpanded,
+          globalJsonTextSelection: null,
           expandedLogIds: nextGlobalExpanded
         };
       }
@@ -887,6 +944,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
     case 'TOGGLE_ALL_JSON_EXPANSION': {
       return {
         ...state,
+        serviceJsonTextSelection: null,
+        globalJsonTextSelection: null,
         expandedLogIds: action.forceState !== undefined
           ? (action.forceState ? state.expandedLogIds : {})
           : {}

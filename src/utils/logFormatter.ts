@@ -1,5 +1,5 @@
 import { theme } from '../theme/theme.js';
-import { LogEntry } from '../types/index.js';
+import { JsonTextSelection, LogEntry } from '../types/index.js';
 
 export interface JsonLogParseResult {
   isJson: boolean;
@@ -23,6 +23,89 @@ export interface HighlightToken {
 
 export interface HighlightedLine {
   tokens: HighlightToken[];
+}
+
+export interface JsonTextSelectionBounds {
+  startLine: number;
+  startChar: number;
+  endLine: number;
+  endChar: number;
+}
+
+export interface HighlightedSelectionSegment extends HighlightToken {
+  selected: boolean;
+}
+
+export function getJsonTextSelectionBounds(selection: JsonTextSelection): JsonTextSelectionBounds {
+  const anchor = { line: selection.anchorLine, char: selection.anchorChar };
+  const head = { line: selection.headLine, char: selection.headChar };
+  const isForward = anchor.line < head.line || (anchor.line === head.line && anchor.char <= head.char);
+  const start = isForward ? anchor : head;
+  const end = isForward ? head : anchor;
+
+  return {
+    startLine: Math.max(0, start.line),
+    startChar: Math.max(0, start.char),
+    endLine: Math.max(0, end.line),
+    endChar: Math.max(0, end.char) + 1
+  };
+}
+
+export function getSelectedJsonText(lines: HighlightedLine[], selection: JsonTextSelection): string | null {
+  if (lines.length === 0) return null;
+
+  const bounds = getJsonTextSelectionBounds(selection);
+  if (bounds.startLine >= lines.length || bounds.endLine >= lines.length) return null;
+  const startLine = Math.min(bounds.startLine, lines.length - 1);
+  const endLine = Math.min(bounds.endLine, lines.length - 1);
+  if (startLine > endLine) return null;
+
+  return lines.slice(startLine, endLine + 1).map((line, idx) => {
+    const lineIndex = startLine + idx;
+    const text = line.tokens.map(token => token.text).join('');
+    const startChar = lineIndex === startLine ? Math.min(bounds.startChar, text.length) : 0;
+    const endChar = lineIndex === endLine ? Math.min(bounds.endChar, text.length) : text.length;
+    return text.slice(startChar, Math.max(startChar, endChar));
+  }).join('\n');
+}
+
+export function getHighlightedSelectionSegments(
+  line: HighlightedLine,
+  lineIndex: number,
+  selection: JsonTextSelection | null
+): HighlightedSelectionSegment[] {
+  if (!selection) {
+    return line.tokens.map(token => ({ ...token, selected: false }));
+  }
+
+  const bounds = getJsonTextSelectionBounds(selection);
+  const lineLength = line.tokens.reduce((length, token) => length + token.text.length, 0);
+  if (lineIndex < bounds.startLine || lineIndex > bounds.endLine) {
+    return line.tokens.map(token => ({ ...token, selected: false }));
+  }
+
+  const selectedStart = lineIndex === bounds.startLine ? Math.min(bounds.startChar, lineLength) : 0;
+  const selectedEnd = lineIndex === bounds.endLine ? Math.min(bounds.endChar, lineLength) : lineLength;
+  if (selectedEnd <= selectedStart) {
+    return line.tokens.map(token => ({ ...token, selected: false }));
+  }
+
+  const segments: HighlightedSelectionSegment[] = [];
+  let lineOffset = 0;
+  for (const token of line.tokens) {
+    const tokenEnd = lineOffset + token.text.length;
+    const start = Math.max(0, selectedStart - lineOffset);
+    const end = Math.min(token.text.length, selectedEnd - lineOffset);
+    const addSegment = (text: string, selected: boolean) => {
+      if (text) segments.push({ ...token, text, selected });
+    };
+
+    addSegment(token.text.slice(0, start), false);
+    addSegment(token.text.slice(start, Math.max(start, end)), end > start);
+    addSegment(token.text.slice(Math.max(start, end)), false);
+    lineOffset = tokenEnd;
+  }
+  return segments;
 }
 
 // Boilerplate keys that can be omitted from compact summaries

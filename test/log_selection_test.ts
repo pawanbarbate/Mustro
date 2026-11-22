@@ -4,7 +4,14 @@ import {
   initialDashboardState
 } from '../src/state/dashboardReducer.js';
 import { formatLogEntry } from '../src/utils/clipboard.js';
-import { calculateVisibleLogWindow, filterGlobalLogs, getLogDisplayText } from '../src/utils/logFormatter.js';
+import {
+  calculateVisibleLogWindow,
+  filterGlobalLogs,
+  formatJsonToHighlightedLines,
+  getHighlightedSelectionSegments,
+  getLogDisplayText,
+  getSelectedJsonText
+} from '../src/utils/logFormatter.js';
 import { LogEntry } from '../src/types/index.js';
 
 async function runLogSelectionTests() {
@@ -189,6 +196,7 @@ async function runLogSelectionTests() {
   const displayedMessage = getLogDisplayText(jsonLog, 80, false);
   assert.strictEqual(displayedMessage, 'server.started');
   assert.strictEqual(displayedMessage.slice(0, 6), 'server');
+  console.log('\n[Test 11] Stable log identity survives line-budget window changes...');
 
   state = dashboardReducer(initialDashboardState, {
     type: 'SELECT_LOG_ROW',
@@ -218,7 +226,63 @@ async function runLogSelectionTests() {
   assert.strictEqual(state.globalSelectedLogId, jsonLog.id);
   console.log('✔ Filtered windows, displayed JSON text, and stable selected log identity verified');
 
-  console.log('\n=== ALL LOG SELECTION & INDICATOR TESTS PASSED (11/11) ===');
+  // Test 12: JSON text selection preserves partial lines, indentation, and direction
+  console.log('\n[Test 12] Testing partial multi-line JSON text selection...');
+  const jsonLines = formatJsonToHighlightedLines({ name: 'pawan', count: 666 });
+  const jsonLineText = jsonLines.map(line => line.tokens.map(token => token.text).join(''));
+  const jsonTextSelection = {
+    logId: 'json-selection',
+    anchorLine: 1,
+    anchorChar: 2,
+    headLine: 2,
+    headChar: 5
+  };
+  assert.strictEqual(
+    getSelectedJsonText(jsonLines, jsonTextSelection),
+    `${jsonLineText[1]!.slice(2)}\n${jsonLineText[2]!.slice(0, 6)}`
+  );
+  assert.strictEqual(
+    getSelectedJsonText(jsonLines, { ...jsonTextSelection, anchorLine: 2, anchorChar: 5, headLine: 1, headChar: 2 }),
+    `${jsonLineText[1]!.slice(2)}\n${jsonLineText[2]!.slice(0, 6)}`,
+    'Reverse drags should copy the same text'
+  );
+  assert.strictEqual(
+    getSelectedJsonText(jsonLines, { ...jsonTextSelection, headLine: jsonLines.length }),
+    null,
+    'Stale ranges outside the JSON payload should not copy text'
+  );
+  const highlightedSelection = getHighlightedSelectionSegments(jsonLines[1]!, 1, jsonTextSelection);
+  assert.ok(highlightedSelection.some(segment => segment.selected && segment.text === '"name"'));
+  console.log('✔ JSON drag ranges copy exact text and retain syntax highlighting');
+
+  state = dashboardReducer(initialDashboardState, {
+    type: 'SET_JSON_TEXT_SELECTION',
+    selection: jsonTextSelection,
+    panel: 'service'
+  });
+  assert.deepStrictEqual(state.serviceJsonTextSelection, jsonTextSelection);
+  state = dashboardReducer(state, {
+    type: 'SCROLL_JSON_LINES',
+    delta: 1,
+    maxScroll: 10,
+    logId: 'json-selection',
+    panel: 'service'
+  });
+  assert.strictEqual(state.serviceJsonTextSelection, null, 'Scrolling JSON should clear its previous visible selection');
+  state = dashboardReducer(state, {
+    type: 'SET_JSON_TEXT_SELECTION',
+    selection: jsonTextSelection,
+    panel: 'service'
+  });
+  state = dashboardReducer(state, {
+    type: 'SELECT_LOG_ROW',
+    index: 0,
+    logId: 'another-log',
+    panel: 'service'
+  });
+  assert.strictEqual(state.serviceJsonTextSelection, null, 'Changing the selected log should clear JSON text selection');
+
+  console.log('\n=== ALL LOG SELECTION & INDICATOR TESTS PASSED (12/12) ===');
 }
 
 runLogSelectionTests().catch((err) => {

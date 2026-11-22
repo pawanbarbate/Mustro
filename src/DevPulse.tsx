@@ -21,7 +21,7 @@ import {
   formatServiceErrorSummary,
   formatAllErrors
 } from './utils/clipboard.js';
-import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines, filterGlobalLogs, calculateVisibleLogWindow, getLogWindowAnchorId, getLogDisplayText } from './utils/logFormatter.js';
+import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines, filterGlobalLogs, calculateVisibleLogWindow, getLogWindowAnchorId, getLogDisplayText, getSelectedJsonText } from './utils/logFormatter.js';
 
 export interface DevPulseProps {
   config?: DevPulseConfig;
@@ -131,7 +131,30 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
       anchorLogId
     });
   };
+  const getPanelJsonSelectionText = (panel: 'service' | 'global'): string | null => {
+    const selection = panel === 'service' ? state.serviceJsonTextSelection : state.globalJsonTextSelection;
+    if (!selection) return null;
+    const log = getVisiblePanelLogs(panel).visibleLogs.find(entry => String(entry.id) === String(selection.logId));
+    if (!log) return null;
+    const jsonResult = parseJsonLog(log.message);
+    if (!jsonResult.isJson || !jsonResult.parsed) return null;
+    return getSelectedJsonText(formatJsonToHighlightedLines(jsonResult.parsed), selection);
+  };
   const copyPanelSelection = (panel: 'service' | 'global'): boolean => {
+    const jsonSelection = panel === 'service' ? state.serviceJsonTextSelection : state.globalJsonTextSelection;
+    if (jsonSelection) {
+      const text = getPanelJsonSelectionText(panel);
+      if (text === null) {
+        dispatch({ type: 'SHOW_TOAST', message: 'ℹ Selected JSON text is no longer visible' });
+        return true;
+      }
+      copyToClipboardDetailed(text).then(result => {
+        dispatch({ type: 'SET_COPIED_FLASH', logId: jsonSelection.logId });
+        dispatch({ type: 'SHOW_TOAST', message: getCopyFeedbackMessage(result, `✔ Copied ${text.length} selected JSON characters!`) });
+      });
+      return true;
+    }
+
     const charSelection = panel === 'service' ? state.serviceCharSelection : state.globalCharSelection;
     const selectionAnchor = panel === 'service' ? state.serviceSelectionAnchorLogId : state.globalSelectionAnchorLogId;
     const selectedLogId = panel === 'service' ? state.serviceSelectedLogId : state.globalSelectedLogId;
@@ -335,7 +358,10 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
   // Calculate active selection summary for Footer
   let selectionText: string | null = null;
   if (state.activePanel === 'serviceLogs') {
-    if (state.serviceCharSelection) {
+    const jsonText = getPanelJsonSelectionText('service');
+    if (state.serviceJsonTextSelection) {
+      selectionText = jsonText === null ? 'JSON text' : `${jsonText.length} JSON chars`;
+    } else if (state.serviceCharSelection) {
       const chars = Math.max(0, state.serviceCharSelection.end - state.serviceCharSelection.start);
       selectionText = `${chars} chars`;
     } else if (state.serviceSelectionAnchor !== null && state.serviceSelectionAnchor !== state.serviceSelectedLogIndex) {
@@ -343,7 +369,10 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
       selectionText = `${lines} lines`;
     }
   } else if (state.activePanel === 'globalLogs') {
-    if (state.globalCharSelection) {
+    const jsonText = getPanelJsonSelectionText('global');
+    if (state.globalJsonTextSelection) {
+      selectionText = jsonText === null ? 'JSON text' : `${jsonText.length} JSON chars`;
+    } else if (state.globalCharSelection) {
       const chars = Math.max(0, state.globalCharSelection.end - state.globalCharSelection.start);
       selectionText = `${chars} chars`;
     } else if (state.globalSelectionAnchor !== null && state.globalSelectionAnchor !== state.globalSelectedLogIndex) {
@@ -392,6 +421,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               selectionAnchor={state.serviceSelectionAnchor}
               selectionAnchorLogId={state.serviceSelectionAnchorLogId}
               charSelection={state.serviceCharSelection}
+              jsonTextSelection={state.serviceJsonTextSelection}
               jsonLineScroll={state.serviceJsonLineScroll}
               jsonLineScrollById={state.serviceJsonLineScrollById}
               expandedLogIds={state.serviceExpandedLogIds}
@@ -430,6 +460,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               selectionAnchor={state.globalSelectionAnchor}
               selectionAnchorLogId={state.globalSelectionAnchorLogId}
               charSelection={state.globalCharSelection}
+              jsonTextSelection={state.globalJsonTextSelection}
               jsonLineScroll={state.globalJsonLineScroll}
               expandedLogIds={state.globalExpandedLogIds}
               copiedLogId={state.copiedLogId}
@@ -510,6 +541,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 selectionAnchor={state.serviceSelectionAnchor}
                 selectionAnchorLogId={state.serviceSelectionAnchorLogId}
                 charSelection={state.serviceCharSelection}
+                jsonTextSelection={state.serviceJsonTextSelection}
                 jsonLineScroll={state.serviceJsonLineScroll}
                 jsonLineScrollById={state.serviceJsonLineScrollById}
                 expandedLogIds={state.serviceExpandedLogIds}
@@ -545,6 +577,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 selectionAnchor={state.globalSelectionAnchor}
                 selectionAnchorLogId={state.globalSelectionAnchorLogId}
                 charSelection={state.globalCharSelection}
+                jsonTextSelection={state.globalJsonTextSelection}
                 jsonLineScroll={state.globalJsonLineScroll}
                 expandedLogIds={state.globalExpandedLogIds}
                 copiedLogId={state.copiedLogId}
@@ -604,6 +637,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 selectionAnchor={state.serviceSelectionAnchor}
                 selectionAnchorLogId={state.serviceSelectionAnchorLogId}
                 charSelection={state.serviceCharSelection}
+                jsonTextSelection={state.serviceJsonTextSelection}
                 jsonLineScroll={state.serviceJsonLineScroll}
                 jsonLineScrollById={state.serviceJsonLineScrollById}
                 expandedLogIds={state.serviceExpandedLogIds}
@@ -637,6 +671,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 selectionAnchor={state.globalSelectionAnchor}
                 selectionAnchorLogId={state.globalSelectionAnchorLogId}
                 charSelection={state.globalCharSelection}
+                jsonTextSelection={state.globalJsonTextSelection}
                 jsonLineScroll={state.globalJsonLineScroll}
                 expandedLogIds={state.globalExpandedLogIds}
                 copiedLogId={state.copiedLogId}
