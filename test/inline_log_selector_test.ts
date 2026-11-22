@@ -6,7 +6,9 @@ import {
 import {
   parseJsonLog,
   formatJsonToHighlightedLines,
-  calculateVisibleLogWindow
+  calculateVisibleLogWindow,
+  getLogScrollOffsetForEntry,
+  filterGlobalLogs
 } from '../src/utils/logFormatter.js';
 import { LogEntry } from '../src/types/index.js';
 
@@ -154,9 +156,13 @@ async function runInlineLogSelectorTests() {
   const expandedWindow = calculateVisibleLogWindow({
     logs: sampleLogs,
     availableLines: 6,
-    scrollOffset: 0,
-    expandedLogIds: { 'log-10': true },
-    anchorLogId: 'log-10'
+    scrollOffset: getLogScrollOffsetForEntry({
+      logs: sampleLogs,
+      availableLines: 6,
+      expandedLogIds: { 'log-10': true },
+      logId: 'log-10'
+    }),
+    expandedLogIds: { 'log-10': true }
   });
 
   // Log 10 is JSON and takes 1 (header) + maxJsonLines (5) = 6 lines max.
@@ -171,9 +177,13 @@ async function runInlineLogSelectorTests() {
     const res = calculateVisibleLogWindow({
       logs: sampleLogs,
       availableLines: lines,
-      scrollOffset: 0,
-      expandedLogIds: { 'log-10': true },
-      anchorLogId: 'log-10'
+      scrollOffset: getLogScrollOffsetForEntry({
+        logs: sampleLogs,
+        availableLines: lines,
+        expandedLogIds: { 'log-10': true },
+        logId: 'log-10'
+      }),
+      expandedLogIds: { 'log-10': true }
     });
 
     // Calculate actual line sum
@@ -206,6 +216,115 @@ async function runInlineLogSelectorTests() {
   assert.ok(scrolledWindow.effectiveOffset > 0, 'Effective offset should be > 0 when scrolled');
   assert.ok(scrolledWindow.endIdx <= sampleLogs.length, 'endIdx must not exceed totalLogs');
   console.log('✔ Scrolled offset and index bounds successfully verified');
+
+  // Test 12b: Outer log scrolling can move past an expanded log in either direction
+  console.log('\n[Test 12b] Testing outer log scrolling around an expanded JSON log...');
+  const scrolledPastExpanded = calculateVisibleLogWindow({
+    logs: sampleLogs,
+    availableLines: 6,
+    scrollOffset: 1,
+    expandedLogIds: { 'log-10': true }
+  });
+  assert.strictEqual(scrolledPastExpanded.maxScroll, sampleLogs.length - 1);
+  assert.ok(
+    !scrolledPastExpanded.visibleLogs.some(log => log.id === 'log-10'),
+    'A nonzero outer scroll must be able to move past the expanded anchor'
+  );
+
+  const partialWindowLogs: LogEntry[] = [
+    { id: 'before-expanded', timestamp: '', service: 'AUTH', level: 'info', message: 'before' },
+    { id: 'partially-visible-json', timestamp: '', service: 'AUTH', level: 'info', message: JSON.stringify({ nested: { first: 1, second: 2 } }) },
+    { id: 'after-expanded', timestamp: '', service: 'AUTH', level: 'info', message: 'after' }
+  ];
+  const partialAtTail = calculateVisibleLogWindow({
+    logs: partialWindowLogs,
+    availableLines: 3,
+    scrollOffset: 0,
+    expandedLogIds: { 'partially-visible-json': true }
+  });
+  assert.deepStrictEqual(partialAtTail.visibleLineRanges, [
+    { startLine: 1, endLine: 3 },
+    { startLine: 0, endLine: 1 }
+  ], 'The tail window should show a partial expanded row followed by the newest log');
+  const partialAtOldest = calculateVisibleLogWindow({
+    logs: partialWindowLogs,
+    availableLines: 3,
+    scrollOffset: partialAtTail.maxScroll,
+    expandedLogIds: { 'partially-visible-json': true }
+  });
+  assert.deepStrictEqual(partialAtOldest.visibleLineRanges, [
+    { startLine: 0, endLine: 1 },
+    { startLine: 0, endLine: 2 }
+  ], 'The oldest window should include the preceding log and a partial expanded row');
+
+  const oldestWindow = calculateVisibleLogWindow({
+    logs: sampleLogs,
+    availableLines: 6,
+    scrollOffset: scrolledPastExpanded.maxScroll,
+    expandedLogIds: { 'log-10': true }
+  });
+  assert.strictEqual(oldestWindow.startIdx, 0, 'Maximum outer scroll must reach the oldest logs');
+  assert.ok(oldestWindow.visibleLogs.some(log => log.id === 'log-0'));
+  console.log('✔ Outer log scrolling can move past expanded JSON and reach the oldest entries');
+
+  const expansionScrollState = {
+    ...initialDashboardState,
+    services: initialDashboardState.services.map((service, index) =>
+      index === 0 ? { ...service, logs: sampleLogs } : service
+    ),
+    globalLogs: sampleLogs
+  };
+  const selectedExpansionOffset = getLogScrollOffsetForEntry({
+    logs: sampleLogs,
+    availableLines: 6,
+    expandedLogIds: { 'log-10': true },
+    logId: 'log-10'
+  });
+  const serviceExpansion = dashboardReducer(expansionScrollState, {
+    type: 'TOGGLE_LOG_EXPANSION',
+    logId: 'log-10',
+    panel: 'service',
+    scrollOffset: selectedExpansionOffset
+  });
+  const globalExpansion = dashboardReducer(expansionScrollState, {
+    type: 'TOGGLE_LOG_EXPANSION',
+    logId: 'log-10',
+    panel: 'global',
+    scrollOffset: selectedExpansionOffset
+  });
+  assert.strictEqual(serviceExpansion.serviceLogScroll, 9);
+  assert.strictEqual(globalExpansion.globalLogScroll, 9);
+  const filteredGlobalLogs = filterGlobalLogs([
+    { id: 'auth-before', timestamp: '', service: 'AUTH', level: 'info', message: 'before' },
+    { id: 'worker-hidden', timestamp: '', service: 'WORKER', level: 'info', message: 'hidden' },
+    { id: 'auth-json', timestamp: '', service: 'AUTH', level: 'info', message: JSON.stringify({ value: 1 }) },
+    { id: 'worker-hidden-2', timestamp: '', service: 'WORKER', level: 'info', message: 'hidden' },
+    { id: 'auth-after', timestamp: '', service: 'AUTH', level: 'info', message: 'after' }
+  ], '', 'AUTH');
+  const filteredExpansionOffset = getLogScrollOffsetForEntry({
+    logs: filteredGlobalLogs,
+    availableLines: 2,
+    expandedLogIds: { 'auth-json': true },
+    logId: 'auth-json'
+  });
+  const filteredGlobalExpansion = dashboardReducer({
+    ...initialDashboardState,
+    filterIndex: 1,
+    globalLogs: [
+      { id: 'auth-before', timestamp: '', service: 'AUTH', level: 'info', message: 'before' },
+      { id: 'worker-hidden', timestamp: '', service: 'WORKER', level: 'info', message: 'hidden' },
+      { id: 'auth-json', timestamp: '', service: 'AUTH', level: 'info', message: JSON.stringify({ value: 1 }) },
+      { id: 'worker-hidden-2', timestamp: '', service: 'WORKER', level: 'info', message: 'hidden' },
+      { id: 'auth-after', timestamp: '', service: 'AUTH', level: 'info', message: 'after' }
+    ]
+  }, {
+    type: 'TOGGLE_LOG_EXPANSION',
+    logId: 'auth-json',
+    panel: 'global',
+    scrollOffset: filteredExpansionOffset
+  });
+  assert.strictEqual(filteredGlobalExpansion.globalLogScroll, 1);
+  console.log('✔ Expanding a log positions both panels so outer scrolling can continue in either direction');
 
   // Test 13: Panel-specific expansion isolation (service vs global)
   console.log('\n[Test 13] Testing panel-specific expansion isolation in reducer...');
@@ -289,9 +408,13 @@ async function runInlineLogSelectorTests() {
   const globalWindow = calculateVisibleLogWindow({
     logs: globalTestLogs,
     availableLines: 6,
-    scrollOffset: 0,
-    expandedLogIds: { 'g-4': true },
-    anchorLogId: 'g-4'
+    scrollOffset: getLogScrollOffsetForEntry({
+      logs: globalTestLogs,
+      availableLines: 6,
+      expandedLogIds: { 'g-4': true },
+      logId: 'g-4'
+    }),
+    expandedLogIds: { 'g-4': true }
   });
 
   // Calculate rendered line footprint of globalWindow
@@ -331,9 +454,13 @@ async function runInlineLogSelectorTests() {
   const tallWindow = calculateVisibleLogWindow({
     logs: sampleLogs,
     availableLines: 17, // 45-line terminal globalLogs available height
-    scrollOffset: 0,
-    expandedLogIds: { 'log-10': true },
-    anchorLogId: 'log-10'
+    scrollOffset: getLogScrollOffsetForEntry({
+      logs: sampleLogs,
+      availableLines: 17,
+      expandedLogIds: { 'log-10': true },
+      logId: 'log-10'
+    }),
+    expandedLogIds: { 'log-10': true }
   });
   // In a 17-line budget, maxJsonLines scales up to Math.min(10, Math.floor(17 * 0.55)) - 1 = 9 - 1 = 8 lines
   assert.ok(tallWindow.maxJsonLines >= 8, `maxJsonLines (${tallWindow.maxJsonLines}) should scale up to >= 8 in tall viewports`);

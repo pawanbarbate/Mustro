@@ -70,12 +70,16 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Toggle active panel focus</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color={theme.colors.accent} bold>PgUp / PgDn / [ ]</Text>
-          <Text color={theme.colors.textSecondary}>Scroll logs history (Home/End)</Text>
+          <Text color={theme.colors.accent} bold>PgUp / PgDn / wheel</Text>
+          <Text color={theme.colors.textSecondary}>Scroll log history (Home/End to first/latest)</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.accent} bold>[ / ]</Text>
+          <Text color={theme.colors.textSecondary}>Scroll lines inside expanded JSON</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.running} bold>c  /  y</Text>
-          <Text color={theme.colors.textSecondary}>Copy selected log line (formatted JSON if expanded)</Text>
+          <Text color={theme.colors.textSecondary}>Copy selected text, log line, or formatted JSON</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.running} bold>r</Text>
@@ -105,10 +109,14 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
         paddingX={1} 
         paddingY={0} 
         marginBottom={1} 
-        justifyContent="center"
+        alignItems="center"
+        flexDirection="column"
       >
         <Text color={theme.colors.textMuted}>
-          💡 Tip: Hold <Text color={theme.colors.accent}>Option</Text> (macOS) or <Text color={theme.colors.accent}>Shift</Text> (Linux/Win) to drag-select terminal text
+          💡 Drag across expanded JSON lines to select text; press <Text color={theme.colors.accent}>c</Text> or <Text color={theme.colors.accent}>y</Text> to copy
+        </Text>
+        <Text color={theme.colors.textMuted}>
+          Hold <Text color={theme.colors.accent}>Option</Text> (macOS) or <Text color={theme.colors.accent}>Shift</Text> (Linux/Win) to select terminal text
         </Text>
       </Box>
 

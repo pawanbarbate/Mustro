@@ -28,6 +28,14 @@ export interface LogEntry {
   raw?: string;
 }
 
+export interface JsonTextSelection {
+  logId: string | number;
+  anchorLine: number;
+  anchorChar: number;
+  headLine: number;
+  headChar: number;
+}
+
 export interface ServiceMetrics {
   cpu?: string;
   memory?: string;

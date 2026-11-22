@@ -1,6 +1,9 @@
 import clipboard from 'clipboardy';
 import fs from 'fs';
 import { LogEntry, Service } from '../types/index.js';
+import { stripAnsiEscapeCodes } from './ansi.js';
+
+export { stripAnsiEscapeCodes } from './ansi.js';
 
 /**
  * Generate OSC 52 terminal clipboard escape sequence.
@@ -22,7 +25,7 @@ export function getOsc52Sequence(text: string): string {
  */
 export async function copyViaOsCommand(text: string): Promise<boolean> {
   try {
-    await clipboard.write(text);
+    await clipboard.write(stripAnsiEscapeCodes(text));
     return true;
   } catch {
     return false;
@@ -34,7 +37,7 @@ export async function copyViaOsCommand(text: string): Promise<boolean> {
  */
 export function writeOsc52(text: string): boolean {
   try {
-    const osc52 = getOsc52Sequence(text);
+    const osc52 = getOsc52Sequence(stripAnsiEscapeCodes(text));
     if (process.platform !== 'win32') {
       const ttyFd = fs.openSync('/dev/tty', 'w');
       try {
