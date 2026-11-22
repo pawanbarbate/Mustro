@@ -70,8 +70,12 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Toggle active panel focus</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color={theme.colors.accent} bold>PgUp / PgDn / [ ]</Text>
-          <Text color={theme.colors.textSecondary}>Scroll logs history (Home/End)</Text>
+          <Text color={theme.colors.accent} bold>PgUp / PgDn / wheel</Text>
+          <Text color={theme.colors.textSecondary}>Scroll log history (Home/End to first/latest)</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.accent} bold>[ / ]</Text>
+          <Text color={theme.colors.textSecondary}>Scroll lines inside expanded JSON</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.running} bold>c  /  y</Text>

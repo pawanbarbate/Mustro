@@ -278,25 +278,6 @@ export function filterGlobalLogs(logs: LogEntry[], searchQuery: string, activeFi
   });
 }
 
-export function getLogWindowAnchorId(
-  logs: LogEntry[],
-  selectedLogId: string | number | null,
-  expandedLogIds: Record<string | number, boolean>,
-  selectionAnchorLogId: string | number | null = null
-): string | number | null {
-  if (selectionAnchorLogId !== null && logs.some(log => String(log.id) === String(selectionAnchorLogId))) {
-    return selectionAnchorLogId;
-  }
-  if (
-    selectedLogId !== null &&
-    expandedLogIds[selectedLogId] &&
-    logs.some(log => String(log.id) === String(selectedLogId))
-  ) {
-    return selectedLogId;
-  }
-  return Object.keys(expandedLogIds).find(id => expandedLogIds[id]) || null;
-}
-
 /**
  * Returns formatted 2-space indented pretty-printed JSON if input is JSON,
  * or original string verbatim.
@@ -416,12 +397,47 @@ export function formatJsonToHighlightedLines(obj: any, indent = 2): HighlightedL
 
 export interface WindowedLogsResult {
   visibleLogs: LogEntry[];
+  visibleLineRanges: Array<{ startLine: number; endLine: number }>;
   startIdx: number;
   endIdx: number;
   totalLogs: number;
   maxScroll: number;
   effectiveOffset: number;
   maxJsonLines: number;
+}
+
+function getLogLineWeight(
+  log: LogEntry,
+  expandedLogIds: Record<string | number, boolean>,
+  maxJsonLines: number
+): number {
+  if (!expandedLogIds[log.id]) return 1;
+  const jsonRes = parseJsonLog(log.message);
+  if (!jsonRes.isJson || !jsonRes.parsed) return 1;
+  return 1 + Math.min(formatJsonToHighlightedLines(jsonRes.parsed).length, maxJsonLines);
+}
+
+export function getLogScrollOffsetForEntry(params: {
+  logs: LogEntry[];
+  availableLines: number;
+  expandedLogIds: Record<string | number, boolean>;
+  logId: string | number;
+}): number {
+  const { logs, availableLines, expandedLogIds, logId } = params;
+  const budget = Math.max(1, availableLines);
+  const maxJsonLines = Math.max(1, budget - 1);
+  const logIndex = logs.findIndex(log => String(log.id) === String(logId));
+  if (logIndex < 0) return 0;
+
+  let totalLines = 0;
+  let targetEndLine = 0;
+  logs.forEach((log, index) => {
+    totalLines += getLogLineWeight(log, expandedLogIds, maxJsonLines);
+    if (index === logIndex) targetEndLine = totalLines;
+  });
+
+  const maxScroll = Math.max(0, totalLines - budget);
+  return Math.max(0, Math.min(maxScroll, totalLines - targetEndLine));
 }
 
 /**
@@ -435,9 +451,8 @@ export function calculateVisibleLogWindow(params: {
   scrollOffset: number;
   expandedLogIds?: Record<string | number, boolean>;
   isWrapMode?: boolean;
-  anchorLogId?: string | number | null;
 }): WindowedLogsResult {
-  const { logs, availableLines, scrollOffset, expandedLogIds = {}, isWrapMode = false, anchorLogId } = params;
+  const { logs, availableLines, scrollOffset, expandedLogIds = {}, isWrapMode = false } = params;
   const totalLogs = logs.length;
   const budget = Math.max(1, availableLines);
 
@@ -449,6 +464,7 @@ export function calculateVisibleLogWindow(params: {
   if (totalLogs === 0) {
     return {
       visibleLogs: [],
+      visibleLineRanges: [],
       startIdx: 0,
       endIdx: 0,
       totalLogs: 0,
@@ -458,119 +474,41 @@ export function calculateVisibleLogWindow(params: {
     };
   }
 
-  const getLogWeight = (log: LogEntry): number => {
-    // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings, never auto-expands JSON trees
-    const isExp = !!expandedLogIds[log.id];
-    if (!isExp) return 1;
-    const jsonRes = parseJsonLog(log.message);
-    if (!jsonRes.isJson || !jsonRes.parsed) return 1;
-    const fullLines = formatJsonToHighlightedLines(jsonRes.parsed);
-    const expLines = Math.min(fullLines.length, maxJsonLines);
-    return 1 + expLines;
-  };
-
-  const maxScroll = Math.max(0, totalLogs - 1);
+  const weights = logs.map(log => getLogLineWeight(log, expandedLogIds, maxJsonLines));
+  const totalLines = weights.reduce((sum, weight) => sum + weight, 0);
+  const maxScroll = Math.max(0, totalLines - budget);
   const effectiveOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
-
-  // Determine target anchor only if explicitly provided
-  let targetIdx: number = -1;
-  if (anchorLogId !== undefined && anchorLogId !== null) {
-    targetIdx = logs.findIndex(l => String(l.id) === String(anchorLogId));
-  }
-
-  let visible: LogEntry[] = [];
-  let startIdx = 0;
+  const viewportStart = Math.max(0, totalLines - budget - effectiveOffset);
+  const viewportEnd = Math.min(totalLines, viewportStart + budget);
+  const visible: LogEntry[] = [];
+  const visibleLineRanges: Array<{ startLine: number; endLine: number }> = [];
+  let contentLine = 0;
+  let startIdx = totalLogs;
   let endIdx = 0;
 
-  if (targetIdx >= 0 && targetIdx < totalLogs) {
-    // Anchor around targetIdx
-    const targetLog = logs[targetIdx]!;
-    visible = [targetLog];
-    let usedLines = getLogWeight(targetLog);
+  logs.forEach((log, index) => {
+    const itemStart = contentLine;
+    const itemEnd = itemStart + weights[index]!;
+    contentLine = itemEnd;
+    if (itemEnd <= viewportStart || itemStart >= viewportEnd) return;
 
-    let belowIdx = targetIdx + 1;
-    let aboveIdx = targetIdx - 1;
-
-    if (effectiveOffset === 0) {
-      // Live tail: prefer logs below towards latest
-      while (belowIdx < totalLogs) {
-        const nextLog = logs[belowIdx]!;
-        const weight = getLogWeight(nextLog);
-        if (usedLines + weight > budget) break;
-        visible.push(nextLog);
-        usedLines += weight;
-        belowIdx++;
-      }
-      while (aboveIdx >= 0) {
-        const prevLog = logs[aboveIdx]!;
-        const weight = getLogWeight(prevLog);
-        if (usedLines + weight > budget) break;
-        visible.unshift(prevLog);
-        usedLines += weight;
-        aboveIdx--;
-      }
-    } else {
-      // Scrolled up: prefer logs above
-      while (aboveIdx >= 0) {
-        const prevLog = logs[aboveIdx]!;
-        const weight = getLogWeight(prevLog);
-        if (usedLines + weight > budget) break;
-        visible.unshift(prevLog);
-        usedLines += weight;
-        aboveIdx--;
-      }
-      while (belowIdx < totalLogs) {
-        const nextLog = logs[belowIdx]!;
-        const weight = getLogWeight(nextLog);
-        if (usedLines + weight > budget) break;
-        visible.push(nextLog);
-        usedLines += weight;
-        belowIdx++;
-      }
-    }
-
-    startIdx = aboveIdx + 1;
-    endIdx = belowIdx;
-  } else {
-    // Standard backward accumulation from (totalLogs - effectiveOffset)
-    const anchorEnd = Math.max(1, totalLogs - effectiveOffset);
-    let usedLines = 0;
-    let currentIdx = anchorEnd - 1;
-
-    while (currentIdx >= 0) {
-      const log = logs[currentIdx]!;
-      const weight = getLogWeight(log);
-      if (usedLines + weight > budget && visible.length > 0) {
-        break;
-      }
-      visible.unshift(log);
-      usedLines += weight;
-      currentIdx--;
-    }
-
-    startIdx = currentIdx + 1;
-    endIdx = startIdx + visible.length;
-
-    // Forward fill if startIdx === 0 and budget remains
-    while (endIdx < totalLogs) {
-      const nextLog = logs[endIdx]!;
-      const weight = getLogWeight(nextLog);
-      if (usedLines + weight > budget) break;
-      visible.push(nextLog);
-      usedLines += weight;
-      endIdx++;
-    }
-  }
-
-  const calculatedOffset = Math.max(0, totalLogs - endIdx);
+    startIdx = Math.min(startIdx, index);
+    endIdx = index + 1;
+    visible.push(log);
+    visibleLineRanges.push({
+      startLine: Math.max(0, viewportStart - itemStart),
+      endLine: Math.min(weights[index]!, viewportEnd - itemStart)
+    });
+  });
 
   return {
     visibleLogs: visible,
+    visibleLineRanges,
     startIdx,
     endIdx,
     totalLogs,
     maxScroll,
-    effectiveOffset: effectiveOffset > 0 ? (calculatedOffset > 0 ? calculatedOffset : effectiveOffset) : 0,
+    effectiveOffset,
     maxJsonLines
   };
 }

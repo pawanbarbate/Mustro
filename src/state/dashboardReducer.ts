@@ -204,7 +204,7 @@ export type DashboardAction =
   | { type: 'CLEAR_LOG_SELECTION'; panel?: 'service' | 'global' }
   | { type: 'SCROLL_JSON_LINES'; delta: number; maxScroll: number; logId?: string | number; panel?: 'service' | 'global' }
   | { type: 'RESET_JSON_LINE_SCROLL'; logId?: string | number; panel?: 'service' | 'global' }
-  | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global' }
+  | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global'; scrollOffset?: number }
   | { type: 'TOGGLE_ALL_JSON_EXPANSION'; forceState?: boolean }
   | { type: 'TOGGLE_MAXIMIZE_PANEL'; panel?: ActivePanel }
   | { type: 'SET_COPIED_FLASH'; logId: string | number | null };
@@ -925,7 +925,10 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           serviceExpandedLogIds: nextServiceExpanded,
           serviceJsonTextSelection: null,
           serviceJsonLineScrollById: nextServiceScrollById,
-          expandedLogIds: nextServiceExpanded
+          expandedLogIds: nextServiceExpanded,
+          serviceLogScroll: !isCurrentlyExpanded && action.scrollOffset !== undefined
+            ? Math.max(0, action.scrollOffset)
+            : state.serviceLogScroll
         };
       } else {
         const isCurrentlyExpanded = !!state.globalExpandedLogIds[action.logId];
@@ -936,7 +939,10 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
           ...state,
           globalExpandedLogIds: nextGlobalExpanded,
           globalJsonTextSelection: null,
-          expandedLogIds: nextGlobalExpanded
+          expandedLogIds: nextGlobalExpanded,
+          globalLogScroll: !isCurrentlyExpanded && action.scrollOffset !== undefined
+            ? Math.max(0, action.scrollOffset)
+            : state.globalLogScroll
         };
       }
     }

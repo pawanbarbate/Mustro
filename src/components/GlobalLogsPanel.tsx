@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { JsonTextSelection, LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme, getServiceBadgeStyle } from '../theme/theme.js';
-import { parseJsonLog, formatJsonToHighlightedLines, HighlightedLine, JsonLogParseResult, calculateVisibleLogWindow, filterGlobalLogs, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId, getHighlightedSelectionSegments } from '../utils/logFormatter.js';
+import { parseJsonLog, formatJsonToHighlightedLines, HighlightedLine, JsonLogParseResult, calculateVisibleLogWindow, filterGlobalLogs, getLogDisplayText, getLogMessageColumnOffset, getHighlightedSelectionSegments } from '../utils/logFormatter.js';
 import { getAnsiTextSelectionSegments, stripAnsiEscapeCodes } from '../utils/ansi.js';
 
 export interface GlobalLogsPanelProps {
@@ -248,10 +248,9 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
   // Overhead: Border top (1) + Border bottom (1) + Header (1) + Hairline (1) = 4 lines.
   const overheadLines = 4;
   const availableLogLines = Math.max(2, (height || 10) - overheadLines);
-  const activeExpandedLogId = getLogWindowAnchorId(matchingLogs, selectedLogId, expandedLogIds, selectionAnchorLogId);
-
   const {
     visibleLogs,
+    visibleLineRanges,
     startIdx,
     endIdx,
     totalLogs: totalFiltered,
@@ -262,8 +261,7 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     availableLines: availableLogLines,
     scrollOffset,
     expandedLogIds,
-    isWrapMode,
-    anchorLogId: activeExpandedLogId || null
+    isWrapMode
   });
 
   const resolvedSelectedIndex = selectedLogId === null
@@ -470,22 +468,29 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
           const jsonResult = parseJsonLog(log.message);
           // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings
           const isExpanded = !!(jsonResult.isJson && expandedLogIds[log.id]);
+          const visibleRange = visibleLineRanges[index]!;
 
           let highlightedLines: HighlightedLine[] = [];
           let jsonScrollInfo: { start: number; end: number; total: number } | null = null;
           let jsonLineStart = 0;
           if (isExpanded && jsonResult.parsed && maxJsonLines > 0) {
             const fullLines = formatJsonToHighlightedLines(jsonResult.parsed);
-            if (fullLines.length <= maxJsonLines) {
-              highlightedLines = fullLines;
-            } else {
-              const maxScroll = fullLines.length - maxJsonLines;
-              const offset = Math.max(0, Math.min(maxScroll, jsonLineScrollById[log.id] ?? jsonLineScroll));
-              jsonLineStart = offset;
-              highlightedLines = fullLines.slice(offset, offset + maxJsonLines);
+            const renderedJsonLineCount = Math.min(fullLines.length, maxJsonLines);
+            const maxScroll = Math.max(0, fullLines.length - maxJsonLines);
+            const storedOffset = jsonLineScrollById[log.id] ?? jsonLineScroll;
+            const offset = Math.max(0, Math.min(maxScroll, storedOffset));
+            const firstVisibleJsonLine = Math.max(0, visibleRange.startLine - 1);
+            const lastVisibleJsonLine = Math.min(renderedJsonLineCount, visibleRange.endLine - 1);
+            const visibleJsonLineCount = Math.max(0, lastVisibleJsonLine - firstVisibleJsonLine);
+            jsonLineStart = Math.min(
+              fullLines.length - visibleJsonLineCount,
+              offset + firstVisibleJsonLine
+            );
+            highlightedLines = fullLines.slice(jsonLineStart, jsonLineStart + visibleJsonLineCount);
+            if (fullLines.length > maxJsonLines) {
               jsonScrollInfo = {
-                start: offset + 1,
-                end: Math.min(fullLines.length, offset + maxJsonLines),
+                start: jsonLineStart + 1,
+                end: Math.min(fullLines.length, jsonLineStart + highlightedLines.length),
                 total: fullLines.length
               };
             }
@@ -499,107 +504,108 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
               paddingX={0}
               marginBottom={0}
             >
-              {/* 1. Clickable Row Header: selects row & focuses panel */}
-              <Clickable
-                id={`global-log-row-${index}`}
-                textStartX={getLogMessageColumnOffset(
-                  log,
-                  23,
-                  isExpanded,
-                  jsonScrollInfo ? `[${jsonScrollInfo.start}-${jsonScrollInfo.end}/${jsonScrollInfo.total} lines]` : undefined
-                )}
-                width="100%"
-                onClick={(ev) => {
-                  onFocus?.();
-                  onSelectLogIndex?.(index, ev?.shiftKey, log.id);
-                }}
-              >
-                <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap" width="100%" height={1} overflow="hidden">
-                  {/* Visual Selector Indicator */}
-                  <Box width={2} flexShrink={0}>
-                    {isCursor ? (
-                      <Text color={theme.colors.accent} bold>▶ </Text>
-                    ) : hasRangeSelection && isInRange ? (
-                      <Text color={theme.colors.accent}>▎ </Text>
-                    ) : (
-                      <Text color={theme.colors.textDim}>  </Text>
-                    )}
-                  </Box>
-
-                  <Box width={9} flexShrink={0}>
-                    <Text color={theme.colors.textMuted}>{log.timestamp} </Text>
-                  </Box>
-
-                  <Box width={11} flexShrink={0} marginRight={1}>
-                    <Text color={theme.colors.textDim}>[</Text>
-                    <Text color={badge.color} bold>
-                      {badge.cleanLabel.padEnd(8)}
-                    </Text>
-                    <Text color={theme.colors.textDim}>] </Text>
-                  </Box>
-
-                  {/* Inline Expand Toggle for JSON (100% in-place) */}
-                  {jsonResult.isJson && (
-                    <Box flexDirection="row" alignItems="center" flexShrink={0} marginRight={1}>
-                      <Clickable
-                        onClick={() => {
-                          onFocus?.();
-                          onSelectLogIndex?.(index, false, log.id);
-                          onToggleExpandLog?.(log.id);
-                        }}
-                      >
-                        <Box flexShrink={0} backgroundColor={theme.colors.card} paddingX={1}>
-                          <Text color={theme.colors.accent} bold>
-                            {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
-                          </Text>
-                        </Box>
-                      </Clickable>
-                      {isExpanded && jsonScrollInfo && (
-                        <Box flexDirection="row" alignItems="center" marginLeft={1}>
-                          <Clickable
-                            onClick={() => {
-                              onFocus?.();
-                              onSelectLogIndex?.(index, false, log.id);
-                              onScrollJson?.(-1, log.id);
-                            }}
-                          >
-                            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
-                              <Text color={jsonScrollInfo.start > 1 ? theme.colors.accent : theme.colors.textMuted} bold>▲</Text>
-                            </Box>
-                          </Clickable>
-                          <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
-                            <Text color={theme.colors.warning} bold>
-                              [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines]
-                            </Text>
-                          </Box>
-                          <Clickable
-                            onClick={() => {
-                              onFocus?.();
-                              onSelectLogIndex?.(index, false, log.id);
-                              onScrollJson?.(1, log.id);
-                            }}
-                          >
-                            <Box backgroundColor={theme.colors.card} paddingX={1}>
-                              <Text color={jsonScrollInfo.end < jsonScrollInfo.total ? theme.colors.accent : theme.colors.textMuted} bold>▼</Text>
-                            </Box>
-                          </Clickable>
-                        </Box>
+              {visibleRange.startLine === 0 && (
+                <Clickable
+                  id={`global-log-row-${index}`}
+                  textStartX={getLogMessageColumnOffset(
+                    log,
+                    23,
+                    isExpanded,
+                    jsonScrollInfo ? `[${jsonScrollInfo.start}-${jsonScrollInfo.end}/${jsonScrollInfo.total} lines]` : undefined
+                  )}
+                  width="100%"
+                  onClick={(ev) => {
+                    onFocus?.();
+                    onSelectLogIndex?.(index, ev?.shiftKey, log.id);
+                  }}
+                >
+                  <Box flexDirection="row" alignItems="center" marginBottom={0} flexWrap="nowrap" width="100%" height={1} overflow="hidden">
+                    {/* Visual Selector Indicator */}
+                    <Box width={2} flexShrink={0}>
+                      {isCursor ? (
+                        <Text color={theme.colors.accent} bold>▶ </Text>
+                      ) : hasRangeSelection && isInRange ? (
+                        <Text color={theme.colors.accent}>▎ </Text>
+                      ) : (
+                        <Text color={theme.colors.textDim}>  </Text>
                       )}
                     </Box>
-                  )}
 
-                  <Box flexGrow={1} flexShrink={1}>
-                    {renderMessage(log, jsonResult, jsonResult.isJson, isCursor)}
-                  </Box>
-
-                  {/* Inline Copy Confirmation Badge */}
-                  {isCopied && (
-                    <Box backgroundColor={theme.colors.runningBg} paddingX={1} flexShrink={0} marginLeft={1}>
-                      <Text color={theme.colors.running} bold>✔ COPIED</Text>
+                    <Box width={9} flexShrink={0}>
+                      <Text color={theme.colors.textMuted}>{log.timestamp} </Text>
                     </Box>
-                  )}
-                </Box>
-              </Clickable>
+
+                    <Box width={11} flexShrink={0} marginRight={1}>
+                      <Text color={theme.colors.textDim}>[</Text>
+                      <Text color={badge.color} bold>
+                        {badge.cleanLabel.padEnd(8)}
+                      </Text>
+                      <Text color={theme.colors.textDim}>] </Text>
+                    </Box>
+
+                    {/* Inline Expand Toggle for JSON (100% in-place) */}
+                    {jsonResult.isJson && (
+                      <Box flexDirection="row" alignItems="center" flexShrink={0} marginRight={1}>
+                        <Clickable
+                          onClick={() => {
+                            onFocus?.();
+                            onSelectLogIndex?.(index, false, log.id);
+                            onToggleExpandLog?.(log.id);
+                          }}
+                        >
+                          <Box flexShrink={0} backgroundColor={theme.colors.card} paddingX={1}>
+                            <Text color={theme.colors.accent} bold>
+                              {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
+                            </Text>
+                          </Box>
+                        </Clickable>
+                        {isExpanded && jsonScrollInfo && (
+                          <Box flexDirection="row" alignItems="center" marginLeft={1}>
+                            <Clickable
+                              onClick={() => {
+                                onFocus?.();
+                                onSelectLogIndex?.(index, false, log.id);
+                                onScrollJson?.(-1, log.id);
+                              }}
+                            >
+                              <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                                <Text color={jsonScrollInfo.start > 1 ? theme.colors.accent : theme.colors.textMuted} bold>▲</Text>
+                              </Box>
+                            </Clickable>
+                            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                              <Text color={theme.colors.warning} bold>
+                                [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines]
+                              </Text>
+                            </Box>
+                            <Clickable
+                              onClick={() => {
+                                onFocus?.();
+                                onSelectLogIndex?.(index, false, log.id);
+                                onScrollJson?.(1, log.id);
+                              }}
+                            >
+                              <Box backgroundColor={theme.colors.card} paddingX={1}>
+                                <Text color={jsonScrollInfo.end < jsonScrollInfo.total ? theme.colors.accent : theme.colors.textMuted} bold>▼</Text>
+                              </Box>
+                            </Clickable>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+
+                    <Box flexGrow={1} flexShrink={1}>
+                      {renderMessage(log, jsonResult, jsonResult.isJson, isCursor)}
+                    </Box>
+
+                    {/* Inline Copy Confirmation Badge */}
+                    {isCopied && (
+                      <Box backgroundColor={theme.colors.runningBg} paddingX={1} flexShrink={0} marginLeft={1}>
+                        <Text color={theme.colors.running} bold>✔ COPIED</Text>
+                      </Box>
+                    )}
+                  </Box>
+                </Clickable>
+              )}
 
               {/* 2. Inline Expanded JSON View: with vertical scroll track */}
               {isExpanded && highlightedLines.length > 0 && (

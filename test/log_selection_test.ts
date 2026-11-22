@@ -10,6 +10,7 @@ import {
   formatJsonToHighlightedLines,
   getHighlightedSelectionSegments,
   getLogDisplayText,
+  getLogScrollOffsetForEntry,
   getSelectedJsonText
 } from '../src/utils/logFormatter.js';
 import { LogEntry } from '../src/types/index.js';
@@ -209,9 +210,13 @@ async function runLogSelectionTests() {
   const expandedWindow = calculateVisibleLogWindow({
     logs: windowLogs,
     availableLines: 5,
-    scrollOffset: 0,
-    expandedLogIds: state.globalExpandedLogIds,
-    anchorLogId: jsonLog.id
+    scrollOffset: getLogScrollOffsetForEntry({
+      logs: windowLogs,
+      availableLines: 5,
+      expandedLogIds: state.globalExpandedLogIds,
+      logId: jsonLog.id
+    }),
+    expandedLogIds: state.globalExpandedLogIds
   });
   assert.ok(expandedWindow.visibleLogs.some(log => log.id === state.globalSelectedLogId));
 

@@ -22,7 +22,7 @@ import {
   formatServiceErrorSummary,
   formatAllErrors
 } from './utils/clipboard.js';
-import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines, filterGlobalLogs, calculateVisibleLogWindow, getLogWindowAnchorId, getLogDisplayText, getSelectedJsonText } from './utils/logFormatter.js';
+import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines, filterGlobalLogs, calculateVisibleLogWindow, getLogScrollOffsetForEntry, getLogDisplayText, getSelectedJsonText } from './utils/logFormatter.js';
 
 export interface DevPulseProps {
   config?: DevPulseConfig;
@@ -37,6 +37,47 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
   const [state, dispatch] = useReducer(dashboardReducer, config, createInitialDashboardState);
   const viewport = useTerminalViewport(width, height, state.maximizedPanel);
   const clickManagerRef = useRef<ClickManagerContextValue | null>(null);
+  const selectedService = state.services[state.selectedIndex] || state.services[0];
+  const activeFilter = state.filterOptions[state.filterIndex] || 'All Services';
+
+  const getPanelLogs = (panel: 'service' | 'global'): LogEntry[] => panel === 'global'
+    ? filterGlobalLogs(state.globalLogs, state.searchQuery, activeFilter)
+    : selectedService
+      ? (state.activeTab === 'errors' ? selectedService.errorLogs || [] : selectedService.logs || [])
+      : [];
+
+  const getPanelAvailableLines = (panel: 'service' | 'global'): number => {
+    const isMaximized = state.maximizedPanel === (panel === 'service' ? 'serviceLogs' : 'globalLogs');
+    const isNarrow = viewport.width < 72 && state.maximizedPanel === 'none';
+    const panelHeight = isMaximized
+      ? viewport.contentHeight
+      : isNarrow
+        ? viewport.contentHeight - 1
+        : panel === 'service'
+          ? viewport.detailPanelHeight
+          : viewport.globalLogsPanelHeight;
+    const overhead = panel === 'global'
+      ? 4
+      : !isMaximized && !isNarrow && viewport.isUltraCompactHeight ? 5 : 7;
+    return Math.max(panel === 'global' ? 2 : 1, panelHeight - overhead);
+  };
+
+  const handleToggleLogExpansion = (panel: 'service' | 'global', logId: string | number) => {
+    const expandedLogIds = panel === 'service' ? state.serviceExpandedLogIds : state.globalExpandedLogIds;
+    const isExpanded = !!expandedLogIds[logId];
+    const nextExpandedLogIds = panel === 'global'
+      ? { [logId]: true }
+      : { ...expandedLogIds, [logId]: true };
+    const scrollOffset = isExpanded
+      ? undefined
+      : getLogScrollOffsetForEntry({
+          logs: getPanelLogs(panel),
+          availableLines: getPanelAvailableLines(panel),
+          expandedLogIds: nextExpandedLogIds,
+          logId
+        });
+    dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel, scrollOffset });
+  };
 
   // Real OS Process Manager Orchestration
   const { handleRestart, handleToggleStop } = useProcessRunner({
@@ -54,6 +95,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     clickManagerRef,
     onRestart: handleRestart,
     onToggleStop: handleToggleStop,
+    onToggleLogExpansion: handleToggleLogExpansion,
     onSwitchConfig
   });
 
@@ -66,8 +108,6 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     return () => clearInterval(timer);
   }, []);
 
-  const selectedService = state.services[state.selectedIndex] || state.services[0];
-  const activeFilter = state.filterOptions[state.filterIndex] || 'All Services';
   const handleSelectServiceLog = (index: number, isShift?: boolean, logId?: string | number) => {
     if (isShift) {
       const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
@@ -101,35 +141,13 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
     }
   };
   const getVisiblePanelLogs = (panel: 'service' | 'global') => {
-    const logs = panel === 'global'
-      ? filterGlobalLogs(state.globalLogs, state.searchQuery, activeFilter)
-      : selectedService
-        ? (state.activeTab === 'errors' ? selectedService.errorLogs || [] : selectedService.logs || [])
-        : [];
-    const isMaximized = state.maximizedPanel === (panel === 'service' ? 'serviceLogs' : 'globalLogs');
-    const isNarrow = viewport.width < 72 && state.maximizedPanel === 'none';
-    const panelHeight = isMaximized
-      ? viewport.contentHeight
-      : isNarrow
-        ? viewport.contentHeight - 1
-        : panel === 'service'
-          ? viewport.detailPanelHeight
-          : viewport.globalLogsPanelHeight;
-    const overhead = panel === 'global'
-      ? 4
-      : !isMaximized && !isNarrow && viewport.isUltraCompactHeight ? 5 : 7;
-    const availableLines = Math.max(panel === 'global' ? 2 : 1, panelHeight - overhead);
     const expandedLogIds = panel === 'service' ? state.serviceExpandedLogIds : state.globalExpandedLogIds;
-    const selectedLogId = panel === 'service' ? state.serviceSelectedLogId : state.globalSelectedLogId;
-    const selectionAnchorLogId = panel === 'service' ? state.serviceSelectionAnchorLogId : state.globalSelectionAnchorLogId;
-    const anchorLogId = getLogWindowAnchorId(logs, selectedLogId, expandedLogIds, selectionAnchorLogId);
     return calculateVisibleLogWindow({
-      logs,
-      availableLines,
+      logs: getPanelLogs(panel),
+      availableLines: getPanelAvailableLines(panel),
       scrollOffset: panel === 'service' ? state.serviceLogScroll : state.globalLogScroll,
       expandedLogIds,
-      isWrapMode: state.isWrapMode,
-      anchorLogId
+      isWrapMode: state.isWrapMode
     });
   };
   const getPanelJsonSelectionText = (panel: 'service' | 'global'): string | null => {
@@ -439,7 +457,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               onCopyCurrent={handleCopyCurrent}
               onCopyLog={handleCopyLog}
               onSelectLogIndex={handleSelectServiceLog}
-              onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
+              onToggleExpandLog={(logId) => handleToggleLogExpansion('service', logId)}
             />
           </Box>
         ) : state.maximizedPanel === 'globalLogs' ? (
@@ -477,7 +495,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
               onCopyCurrent={handleCopyGlobalCurrent}
               onCopyLog={handleCopyLog}
               onSelectLogIndex={handleSelectGlobalLog}
-              onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
+              onToggleExpandLog={(logId) => handleToggleLogExpansion('global', logId)}
             />
           </Box>
         ) : state.maximizedPanel === 'services' ? (
@@ -559,7 +577,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
                 onSelectLogIndex={handleSelectServiceLog}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
+                onToggleExpandLog={(logId) => handleToggleLogExpansion('service', logId)}
               />
             )}
             {state.narrowTab === 'logs' && (
@@ -594,7 +612,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
                 onSelectLogIndex={handleSelectGlobalLog}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
+                onToggleExpandLog={(logId) => handleToggleLogExpansion('global', logId)}
               />
             )}
           </Box>
@@ -655,7 +673,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyCurrent}
                 onCopyLog={handleCopyLog}
                 onSelectLogIndex={handleSelectServiceLog}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'service' })}
+                onToggleExpandLog={(logId) => handleToggleLogExpansion('service', logId)}
               />
               <GlobalLogsPanel 
                 logs={state.globalLogs}
@@ -688,7 +706,7 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
                 onCopyCurrent={handleCopyGlobalCurrent}
                 onCopyLog={handleCopyLog}
                 onSelectLogIndex={handleSelectGlobalLog}
-                onToggleExpandLog={(logId) => dispatch({ type: 'TOGGLE_LOG_EXPANSION', logId, panel: 'global' })}
+                onToggleExpandLog={(logId) => handleToggleLogExpansion('global', logId)}
               />
             </Box>
           </Box>
