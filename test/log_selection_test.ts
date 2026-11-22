@@ -13,6 +13,7 @@ import {
   getSelectedJsonText
 } from '../src/utils/logFormatter.js';
 import { LogEntry } from '../src/types/index.js';
+import { getAnsiTextSelectionSegments, stripAnsiEscapeCodes, truncateAnsiText } from '../src/utils/ansi.js';
 
 async function runLogSelectionTests() {
   console.log('=== STARTING LOG SELECTION & INDICATOR UNIT TESTS ===');
@@ -282,7 +283,16 @@ async function runLogSelectionTests() {
   });
   assert.strictEqual(state.serviceJsonTextSelection, null, 'Changing the selected log should clear JSON text selection');
 
-  console.log('\n=== ALL LOG SELECTION & INDICATOR TESTS PASSED (12/12) ===');
+  // Test 13: ANSI color codes do not affect visible text selection offsets
+  console.log('\n[Test 13] Testing ANSI-aware text selection and truncation...');
+  const coloredText = 'this is \x1b[33mcolored\x1b[39m text';
+  assert.strictEqual(stripAnsiEscapeCodes(coloredText), 'this is colored text');
+  const ansiSegments = getAnsiTextSelectionSegments(coloredText, 8, 15);
+  assert.ok(ansiSegments.some(segment => segment.text === 'colored' && segment.color === 'yellow' && segment.selected));
+  assert.strictEqual(stripAnsiEscapeCodes(truncateAnsiText('A \x1b[33mcolored\x1b[39m tail', 10)), 'A colored…');
+  console.log('✔ ANSI codes preserve visible selection offsets, color styling, and safe truncation');
+
+  console.log('\n=== ALL LOG SELECTION & INDICATOR TESTS PASSED (13/13) ===');
 }
 
 runLogSelectionTests().catch((err) => {

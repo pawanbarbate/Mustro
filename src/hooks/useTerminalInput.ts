@@ -3,6 +3,7 @@ import { useInput } from 'ink';
 import { DashboardState, DashboardAction, FILTER_OPTIONS } from '../state/dashboardReducer.js';
 import { ViewportInfo, JsonTextSelection, LogEntry } from '../types/index.js';
 import { ClickManagerContextValue } from '../components/common/ClickManager.js';
+import { stripAnsiEscapeCodes, truncateAnsiText } from '../utils/ansi.js';
 import {
   copyToClipboardDetailed,
   getCopyFeedbackMessage,
@@ -175,9 +176,10 @@ export function useTerminalInput({
         : viewport.rightPanelWidth;
       const maxMessageLength = Math.max(12, Math.max(20, panelWidth - 4) - 22);
       if (panel === 'service' && curState.activeTab === 'errors') {
-        return curState.isWrapMode ? log.message : log.message.slice(0, maxMessageLength);
+        const text = curState.isWrapMode ? log.message : truncateAnsiText(log.message, maxMessageLength);
+        return stripAnsiEscapeCodes(text);
       }
-      return getLogDisplayText(log, maxMessageLength, curState.isWrapMode);
+      return stripAnsiEscapeCodes(getLogDisplayText(log, maxMessageLength, curState.isWrapMode));
     };
 
     // -------------------------------------------------------------

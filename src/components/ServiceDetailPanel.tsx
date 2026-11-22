@@ -5,6 +5,7 @@ import Clickable from './common/ClickManager.js';
 import { theme } from '../theme/theme.js';
 import useSpinner from '../hooks/useSpinner.js';
 import { parseJsonLog, formatJsonToHighlightedLines, HighlightedLine, JsonLogParseResult, calculateVisibleLogWindow, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId, getHighlightedSelectionSegments } from '../utils/logFormatter.js';
+import { getAnsiTextSelectionSegments, stripAnsiEscapeCodes, truncateAnsiText } from '../utils/ansi.js';
 
 export interface ServiceDetailPanelProps {
   service?: Service;
@@ -182,11 +183,10 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
 
       // Character selection active on this row: apply ONLY to formatted displayMsg!
       if (isCharSelected && charSelection) {
-        const s = Math.max(0, Math.min(displayMsg.length, charSelection.start));
-        const e = Math.max(s, Math.min(displayMsg.length, charSelection.end));
-        const before = displayMsg.slice(0, s);
-        const selected = displayMsg.slice(s, e);
-        const after = displayMsg.slice(e);
+        const visibleMsg = stripAnsiEscapeCodes(displayMsg);
+        const s = Math.max(0, Math.min(visibleMsg.length, charSelection.start));
+        const e = Math.max(s, Math.min(visibleMsg.length, charSelection.end));
+        const segments = getAnsiTextSelectionSegments(displayMsg, s, e);
         return (
           <Text wrap={isWrapMode ? 'wrap' : undefined}>
             {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
@@ -198,9 +198,20 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               </Text>
             )}
             {res.latency && <Text color={theme.colors.textMuted}>({res.latency}) </Text>}
-            <Text color={msgColor}>{before}</Text>
-            <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
-            <Text color={msgColor}>{after}</Text>
+            {segments.map((segment, index) => (
+              <Text
+                key={index}
+                color={segment.selected ? '#FFFFFF' : segment.color || msgColor}
+                backgroundColor={segment.selected ? '#0284C7' : segment.backgroundColor}
+                bold={segment.bold}
+                dimColor={segment.dim}
+                italic={segment.italic}
+                underline={segment.underline}
+                strikethrough={segment.strikethrough}
+              >
+                {segment.text}
+              </Text>
+            ))}
           </Text>
         );
       }
@@ -228,20 +239,30 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
     }
 
     // 2. Standard log message rendering
-    const displayStr = displayMessage ?? (isWrapMode ? msg : (msg.length > maxMsgLen ? msg.slice(0, maxMsgLen - 1) + '…' : msg));
+    const displayStr = displayMessage ?? (isWrapMode ? msg : truncateAnsiText(msg, maxMsgLen));
 
     // Character selection on standard log:
     if (isCharSelected && charSelection) {
-      const s = Math.max(0, Math.min(displayStr.length, charSelection.start));
-      const e = Math.max(s, Math.min(displayStr.length, charSelection.end));
-      const before = displayStr.slice(0, s);
-      const selected = displayStr.slice(s, e);
-      const after = displayStr.slice(e);
+      const visibleStr = stripAnsiEscapeCodes(displayStr);
+      const s = Math.max(0, Math.min(visibleStr.length, charSelection.start));
+      const e = Math.max(s, Math.min(visibleStr.length, charSelection.end));
+      const segments = getAnsiTextSelectionSegments(displayStr, s, e);
       return (
         <Text wrap={isWrapMode ? 'wrap' : undefined}>
-          <Text color={theme.colors.textPrimary}>{before}</Text>
-          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
-          <Text color={theme.colors.textPrimary}>{after}</Text>
+          {segments.map((segment, index) => (
+            <Text
+              key={index}
+              color={segment.selected ? '#FFFFFF' : segment.color || theme.colors.textPrimary}
+              backgroundColor={segment.selected ? '#0284C7' : segment.backgroundColor}
+              bold={segment.bold}
+              dimColor={segment.dim}
+              italic={segment.italic}
+              underline={segment.underline}
+              strikethrough={segment.strikethrough}
+            >
+              {segment.text}
+            </Text>
+          ))}
         </Text>
       );
     }

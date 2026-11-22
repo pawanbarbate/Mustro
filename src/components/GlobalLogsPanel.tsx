@@ -4,6 +4,7 @@ import { JsonTextSelection, LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme, getServiceBadgeStyle } from '../theme/theme.js';
 import { parseJsonLog, formatJsonToHighlightedLines, HighlightedLine, JsonLogParseResult, calculateVisibleLogWindow, filterGlobalLogs, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId, getHighlightedSelectionSegments } from '../utils/logFormatter.js';
+import { getAnsiTextSelectionSegments, stripAnsiEscapeCodes } from '../utils/ansi.js';
 
 export interface GlobalLogsPanelProps {
   logs?: LogEntry[];
@@ -94,11 +95,10 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
 
       // Character selection active on this row: apply ONLY to formatted displayMsg!
       if (isCharSelected && charSelection) {
-        const s = Math.max(0, Math.min(displayMsg.length, charSelection.start));
-        const e = Math.max(s, Math.min(displayMsg.length, charSelection.end));
-        const before = displayMsg.slice(0, s);
-        const selected = displayMsg.slice(s, e);
-        const after = displayMsg.slice(e);
+        const visibleMsg = stripAnsiEscapeCodes(displayMsg);
+        const s = Math.max(0, Math.min(visibleMsg.length, charSelection.start));
+        const e = Math.max(s, Math.min(visibleMsg.length, charSelection.end));
+        const segments = getAnsiTextSelectionSegments(displayMsg, s, e);
         return (
           <Text wrap={isWrapMode ? 'wrap' : undefined}>
             {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
@@ -116,9 +116,20 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
             {res.latency && (
               <Text color={theme.colors.textMuted}>({res.latency}) </Text>
             )}
-            <Text color={theme.colors.textPrimary}>{before}</Text>
-            <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
-            <Text color={theme.colors.textPrimary}>{after}</Text>
+            {segments.map((segment, index) => (
+              <Text
+                key={index}
+                color={segment.selected ? '#FFFFFF' : segment.color || theme.colors.textPrimary}
+                backgroundColor={segment.selected ? '#0284C7' : segment.backgroundColor}
+                bold={segment.bold}
+                dimColor={segment.dim}
+                italic={segment.italic}
+                underline={segment.underline}
+                strikethrough={segment.strikethrough}
+              >
+                {segment.text}
+              </Text>
+            ))}
           </Text>
         );
       }
@@ -149,16 +160,26 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
     const msg = getLogDisplayText(log, maxMsgLen, isWrapMode);
 
     if (isCharSelected && charSelection) {
-      const s = Math.max(0, Math.min(msg.length, charSelection.start));
-      const e = Math.max(s, Math.min(msg.length, charSelection.end));
-      const before = msg.slice(0, s);
-      const selected = msg.slice(s, e);
-      const after = msg.slice(e);
+      const visibleMsg = stripAnsiEscapeCodes(msg);
+      const s = Math.max(0, Math.min(visibleMsg.length, charSelection.start));
+      const e = Math.max(s, Math.min(visibleMsg.length, charSelection.end));
+      const segments = getAnsiTextSelectionSegments(msg, s, e);
       return (
         <Text wrap={isWrapMode ? 'wrap' : undefined}>
-          <Text color={theme.colors.textPrimary}>{before}</Text>
-          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
-          <Text color={theme.colors.textPrimary}>{after}</Text>
+          {segments.map((segment, index) => (
+            <Text
+              key={index}
+              color={segment.selected ? '#FFFFFF' : segment.color || theme.colors.textPrimary}
+              backgroundColor={segment.selected ? '#0284C7' : segment.backgroundColor}
+              bold={segment.bold}
+              dimColor={segment.dim}
+              italic={segment.italic}
+              underline={segment.underline}
+              strikethrough={segment.strikethrough}
+            >
+              {segment.text}
+            </Text>
+          ))}
         </Text>
       );
     }

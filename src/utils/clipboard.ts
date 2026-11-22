@@ -1,16 +1,9 @@
 import clipboard from 'clipboardy';
 import fs from 'fs';
 import { LogEntry, Service } from '../types/index.js';
+import { stripAnsiEscapeCodes } from './ansi.js';
 
-/**
- * Remove ANSI escape sequences so copied output is readable in plain-text apps.
- */
-export function stripAnsiEscapeCodes(text: string): string {
-  return text.replace(
-    /\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\)|[ -/]*[@-~])|\u009B[0-?]*[ -/]*[@-~]|\u009D[^\u0007]*(?:\u0007|\u009C)/g,
-    ''
-  );
-}
+export { stripAnsiEscapeCodes } from './ansi.js';
 
 /**
  * Generate OSC 52 terminal clipboard escape sequence.

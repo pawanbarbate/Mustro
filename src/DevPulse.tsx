@@ -14,6 +14,7 @@ import { ClickProvider, Clickable, ClickManagerContextValue } from './components
 import { theme } from './theme/theme.js';
 import { DevPulseConfig } from './types/config.js';
 import { LogEntry } from './types/index.js';
+import { stripAnsiEscapeCodes, truncateAnsiText } from './utils/ansi.js';
 import {
   copyToClipboardDetailed,
   getCopyFeedbackMessage,
@@ -172,9 +173,11 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
         ? viewport.width
         : viewport.rightPanelWidth;
       const maxMessageLength = Math.max(12, Math.max(20, panelWidth - 4) - 22);
-      const displayMessage = panel === 'service' && state.activeTab === 'errors'
-        ? state.isWrapMode ? selectedLog.message : selectedLog.message.slice(0, maxMessageLength)
-        : getLogDisplayText(selectedLog, maxMessageLength, state.isWrapMode);
+      const displayMessage = stripAnsiEscapeCodes(
+        panel === 'service' && state.activeTab === 'errors'
+          ? state.isWrapMode ? selectedLog.message : truncateAnsiText(selectedLog.message, maxMessageLength)
+          : getLogDisplayText(selectedLog, maxMessageLength, state.isWrapMode)
+      );
       const start = Math.max(0, Math.min(displayMessage.length, charSelection.start));
       const end = Math.max(start, Math.min(displayMessage.length, charSelection.end));
       const text = displayMessage.slice(start, end);

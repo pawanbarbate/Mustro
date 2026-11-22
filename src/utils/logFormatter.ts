@@ -1,5 +1,6 @@
 import { theme } from '../theme/theme.js';
 import { JsonTextSelection, LogEntry } from '../types/index.js';
+import { stripAnsiEscapeCodes, truncateAnsiText } from './ansi.js';
 
 export interface JsonLogParseResult {
   isJson: boolean;
@@ -241,9 +242,9 @@ export function getLogDisplayText(log: LogEntry, maxMessageLength: number, isWra
       ? parsed.extraPairs.map(pair => `${pair.key}: ${pair.val}`).join(' | ')
       : (parsed.error || 'Structured payload'));
   }
-  return isWrapMode || message.length <= maxMessageLength
+  return isWrapMode || stripAnsiEscapeCodes(message).length <= maxMessageLength
     ? message
-    : `${message.slice(0, Math.max(0, maxMessageLength - 1))}…`;
+    : truncateAnsiText(message, maxMessageLength);
 }
 
 export function getLogMessageColumnOffset(

@@ -11,6 +11,7 @@ import { DashboardState, dashboardReducer, initialDashboardState } from '../src/
 import SetupWizard from '../src/components/wizard/SetupWizard.js';
 import { DevPulseConfig } from '../types/config.js';
 import { Service, ViewportInfo } from '../src/types/index.js';
+import { stripAnsiEscapeCodes } from '../src/utils/ansi.js';
 
 async function runExpandedJsonMouseSelectionTest() {
   const stdin = new PassThrough() as any;
@@ -33,13 +34,22 @@ async function runExpandedJsonMouseSelectionTest() {
     port: '',
     pid: '123',
     errors: 0,
-    logs: [{
-      id: 'selection-json',
-      timestamp: '14:00:00',
-      service: 'selection-service',
-      level: 'info',
-      message: JSON.stringify({ name: 'pawan', count: 666 })
-    }]
+    logs: [
+      {
+        id: 'selection-ansi',
+        timestamp: '14:00:00',
+        service: 'selection-service',
+        level: 'info',
+        message: "this is log { number: \x1b[33m66666\x1b[39m, name: \x1b[32m'pawan'\x1b[39m }"
+      },
+      {
+        id: 'selection-json',
+        timestamp: '14:00:01',
+        service: 'selection-service',
+        level: 'info',
+        message: JSON.stringify({ name: 'pawan', count: 666 })
+      }
+    ]
   };
   const initialState: DashboardState = {
     ...initialDashboardState,
@@ -134,8 +144,8 @@ async function runExpandedJsonMouseSelectionTest() {
     };
 
     const selectRange = async (panel: 'service' | 'global') => {
-      const startRegion = findRegion(`${panel}-json-line-0-1`);
-      const endRegion = findRegion(`${panel}-json-line-0-2`);
+        const startRegion = findRegion(`${panel}-json-line-1-1`);
+        const endRegion = findRegion(`${panel}-json-line-1-2`);
       stdin.write(`\x1b[<0;${startRegion.minX + 2};${startRegion.minY}M`);
       await new Promise(resolve => setTimeout(resolve, 30));
       stdin.write(`\x1b[<32;${endRegion.minX + 5};${endRegion.minY}M`);
@@ -156,6 +166,23 @@ async function runExpandedJsonMouseSelectionTest() {
     };
     await selectRange('service');
     await selectRange('global');
+
+    const ansiRow = findRegion('service-log-row-0');
+    const textColumn = ansiRow.minX + (ansiRow.textStartX || 19);
+    stdin.write(`\x1b[<0;${textColumn + 22};${ansiRow.minY}M`);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    stdin.write(`\x1b[<32;${textColumn + 38};${ansiRow.minY}M`);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    stdin.write(`\x1b[<0;${textColumn + 38};${ansiRow.minY}m`);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.deepStrictEqual(latestState.serviceCharSelection, { start: 22, end: 39 });
+    assert.strictEqual(
+      stripAnsiEscapeCodes(service.logs![0]!.message).slice(
+        latestState.serviceCharSelection.start,
+        latestState.serviceCharSelection.end
+      ),
+      "66666, name: 'paw"
+    );
   } finally {
     unmount();
   }
