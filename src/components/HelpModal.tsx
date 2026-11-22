@@ -46,8 +46,8 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Stop or Start selected service</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color="#A78BFA" bold>1  2  3  4  /  ← →</Text>
-          <Text color={theme.colors.textSecondary}>Switch tabs (Logs, Errors, Metrics, Env)</Text>
+          <Text color="#A78BFA" bold>1  2  /  ← →</Text>
+          <Text color={theme.colors.textSecondary}>Switch tabs (Logs, Errors)</Text>
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.accent} bold>/</Text>
@@ -62,6 +62,10 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Toggle Live streaming logs</Text>
         </Box>
         <Box justifyContent="space-between">
+          <Text color={theme.colors.accent} bold>w</Text>
+          <Text color={theme.colors.textSecondary}>Toggle Wrap mode (multi-line vs compact)</Text>
+        </Box>
+        <Box justifyContent="space-between">
           <Text color={theme.colors.textPrimary} bold>t  or  Tab</Text>
           <Text color={theme.colors.textSecondary}>Toggle active panel focus</Text>
         </Box>
@@ -70,9 +74,42 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Scroll logs history (Home/End)</Text>
         </Box>
         <Box justifyContent="space-between">
+          <Text color={theme.colors.running} bold>c  /  y</Text>
+          <Text color={theme.colors.textSecondary}>Copy selected log line (formatted JSON if expanded)</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.running} bold>r</Text>
+          <Text color={theme.colors.textSecondary}>Copy raw stdout stream (Restart in services)</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.running} bold>C  (Shift+C)</Text>
+          <Text color={theme.colors.textSecondary}>Copy all error logs for service</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color="#A78BFA" bold>Enter / v / i</Text>
+          <Text color={theme.colors.textSecondary}>Expand / collapse full JSON inline in feed</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={theme.colors.accent} bold>z  /  Z</Text>
+          <Text color={theme.colors.textSecondary}>Zoom / Maximize active panel (Full-screen focus mode)</Text>
+        </Box>
+        <Box justifyContent="space-between">
           <Text color={theme.colors.textSecondary} bold>q  /  Ctrl+C</Text>
           <Text color={theme.colors.textSecondary}>Exit DevPulse TUI</Text>
         </Box>
+      </Box>
+
+      {/* Terminal Mouse Selection Tip */}
+      <Box 
+        backgroundColor={theme.colors.card} 
+        paddingX={1} 
+        paddingY={0} 
+        marginBottom={1} 
+        justifyContent="center"
+      >
+        <Text color={theme.colors.textMuted}>
+          💡 Tip: Hold <Text color={theme.colors.accent}>Option</Text> (macOS) or <Text color={theme.colors.accent}>Shift</Text> (Linux/Win) to drag-select terminal text
+        </Text>
       </Box>
 
       {/* Footer */}

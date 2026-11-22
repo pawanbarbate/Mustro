@@ -145,6 +145,134 @@ export function getConfigFileSummaries(cwd: string = process.cwd()): ConfigFileS
 }
 
 /**
+ * Asynchronously retrieve metadata summaries for all configuration files in the workspace.
+ * Emits incremental progress percentages (0 - 100) for progress bars / loading screens.
+ */
+export async function getConfigFileSummariesAsync(
+  cwd: string = process.cwd(),
+  onProgress?: (percent: number, statusText: string) => void
+): Promise<ConfigFileSummary[]> {
+  onProgress?.(15, 'Scanning directory for configuration files...');
+  const filePaths = findAllConfigFiles(cwd);
+  onProgress?.(40, `Found ${filePaths.length} configuration candidate${filePaths.length === 1 ? '' : 's'}...`);
+
+  if (filePaths.length === 0) {
+    onProgress?.(100, 'Discovery complete');
+    return [];
+  }
+
+  const summaries: ConfigFileSummary[] = [];
+  for (let i = 0; i < filePaths.length; i++) {
+    const filePath = filePaths[i]!;
+    const filename = path.basename(filePath);
+    try {
+      const raw = await fs.promises.readFile(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as DevPulseConfig;
+      if (parsed && Array.isArray(parsed.services)) {
+        summaries.push({
+          path: filePath,
+          filename,
+          name: parsed.name || filename.replace(/\.devpulse\.json$/i, ''),
+          version: parsed.version,
+          servicesCount: parsed.services.length,
+          services: parsed.services.map(s => ({
+            name: s.name,
+            port: s.port,
+            command: s.command
+          })),
+          isValid: true
+        });
+      } else {
+        summaries.push({
+          path: filePath,
+          filename,
+          name: filename,
+          servicesCount: 0,
+          services: [],
+          isValid: false,
+          error: 'Missing services array'
+        });
+      }
+    } catch (err: any) {
+      summaries.push({
+        path: filePath,
+        filename,
+        name: filename,
+        servicesCount: 0,
+        services: [],
+        isValid: false,
+        error: err?.message || 'JSON parse error'
+      });
+    }
+
+    const currentPercent = Math.round(40 + ((i + 1) / filePaths.length) * 55);
+    onProgress?.(currentPercent, `Parsed ${filename} (${i + 1}/${filePaths.length})...`);
+  }
+
+  onProgress?.(100, 'Discovery complete');
+  return summaries;
+}
+
+export interface InitialAppState {
+  summaries: ConfigFileSummary[];
+  activeConfigPath: string | null;
+  config: DevPulseConfig | null;
+  mode: 'dashboard' | 'wizard' | 'selector' | 'welcome';
+}
+
+/**
+ * Single-pass resolution of the initial CLI application state.
+ * Eliminates repeated redundant disk reads and directory re-scans.
+ */
+export function resolveInitialAppState(
+  cliArgs: CliArgs,
+  cwd: string = process.cwd(),
+  preloadedSummaries?: ConfigFileSummary[]
+): InitialAppState {
+  if (cliArgs.configPath) {
+    const exists = hasConfigFile(cliArgs.configPath);
+    const activeConfigPath = getConfigFilePath(cliArgs.configPath);
+    const config = exists ? loadConfigFile(cliArgs.configPath) : null;
+    return {
+      summaries: [],
+      activeConfigPath,
+      config,
+      mode: exists ? 'dashboard' : 'wizard'
+    };
+  }
+
+  const summaries = preloadedSummaries ?? getConfigFileSummaries(cwd);
+  if (summaries.length > 1) {
+    return {
+      summaries,
+      activeConfigPath: null,
+      config: null,
+      mode: 'selector'
+    };
+  }
+
+  if (summaries.length === 1 && summaries[0]) {
+    const singlePath = summaries[0].path;
+    const config = loadConfigFile(singlePath);
+    if (config) {
+      return {
+        summaries,
+        activeConfigPath: singlePath,
+        config,
+        mode: 'dashboard'
+      };
+    }
+  }
+
+  return {
+    summaries,
+    activeConfigPath: null,
+    config: null,
+    mode: 'welcome'
+  };
+}
+
+/**
  * Check if a DevPulse configuration file exists in the directory or at the given path.
  */
 export function hasConfigFile(cwdOrPath: string = process.cwd()): boolean {
@@ -215,8 +343,8 @@ export function loadConfigFile(cwdOrPath: string = process.cwd()): DevPulseConfi
       return parsed;
     }
     return null;
-  } catch (err) {
-    console.error(`Failed to parse config at ${filePath}:`, err);
+  } catch (err: any) {
+    logger.error(`Failed to parse config at ${filePath}: ${err?.message || err}`);
     return null;
   }
 }
@@ -229,15 +357,15 @@ export function saveConfigFile(
   cwd: string = process.cwd(),
   customFilePath?: string
 ): string {
-  logger.info(JSON.stringify(config));
   const targetPath = customFilePath
     ? (path.isAbsolute(customFilePath) ? customFilePath : path.resolve(cwd, customFilePath))
     : (getConfigFilePath(cwd) || path.resolve(cwd, 'config.devpulse.json'));
-  const payload = {
+  const payload: DevPulseConfig = {
     $schema: 'https://devpulse.dev/schema.json',
     name: config.name || path.basename(cwd) || 'Workspace',
     version: config.version || '1.0.0',
-    services: config.services
+    services: config.services,
+    ...(config.settings ? { settings: config.settings } : {})
   };
 
   fs.writeFileSync(targetPath, JSON.stringify(payload, null, 2), 'utf-8');
@@ -263,7 +391,7 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
   const detected: Partial<ServiceConfig>[] = [];
   const searchDirs = ['services', 'apps', 'packages', 'backend', 'frontend', 'server', 'client'];
 
-  let assignedPort = 3001;
+  let assignedPort = 3000;
 
   for (const dirName of searchDirs) {
     const parentDir = path.resolve(cwd, dirName);
@@ -306,7 +434,6 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
             name: entry.name,
             path: relPath,
             command: 'cargo run',
-            port: assignedPort++,
             autoStart: true
           });
           continue;
@@ -322,7 +449,6 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
             name: entry.name,
             path: relPath,
             command: 'python main.py',
-            port: assignedPort++,
             autoStart: true
           });
           continue;
@@ -334,7 +460,6 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
             name: entry.name,
             path: relPath,
             command: 'go run .',
-            port: assignedPort++,
             autoStart: true
           });
         }

@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { useStdout } from 'ink';
 import { ViewportInfo } from '../types/index.js';
 
-export function useTerminalViewport(overrideWidth?: number, overrideHeight?: number): ViewportInfo {
+export function useTerminalViewport(
+  overrideWidth?: number,
+  overrideHeight?: number,
+  maximizedPanel: 'none' | 'serviceLogs' | 'globalLogs' | 'services' = 'none'
+): ViewportInfo {
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({
     width: overrideWidth ?? (stdout?.columns || 80),
@@ -37,6 +41,67 @@ export function useTerminalViewport(overrideWidth?: number, overrideHeight?: num
   // Content available height = height - 2 rows.
   const contentHeight = Math.max(10, height - 2);
 
+  // Full-Screen Maximized Mode ('z' Zoom)
+  if (maximizedPanel === 'serviceLogs') {
+    return {
+      width,
+      height,
+      isWide,
+      isUltraNarrow: false,
+      isCompactHeight,
+      isUltraCompactHeight: false,
+      leftPanelWidth: 0,
+      rightPanelWidth: width,
+      contentHeight,
+      servicesPanelHeight: 0,
+      systemPanelHeight: 0,
+      detailPanelHeight: contentHeight,
+      globalLogsPanelHeight: 0,
+      maxServiceLogs: Math.max(1, contentHeight - 7),
+      maxGlobalLogs: 0
+    };
+  }
+
+  if (maximizedPanel === 'globalLogs') {
+    return {
+      width,
+      height,
+      isWide,
+      isUltraNarrow: false,
+      isCompactHeight,
+      isUltraCompactHeight: false,
+      leftPanelWidth: 0,
+      rightPanelWidth: width,
+      contentHeight,
+      servicesPanelHeight: 0,
+      systemPanelHeight: 0,
+      detailPanelHeight: 0,
+      globalLogsPanelHeight: contentHeight,
+      maxServiceLogs: 0,
+      maxGlobalLogs: Math.max(2, contentHeight - 4)
+    };
+  }
+
+  if (maximizedPanel === 'services') {
+    return {
+      width,
+      height,
+      isWide,
+      isUltraNarrow: false,
+      isCompactHeight,
+      isUltraCompactHeight: false,
+      leftPanelWidth: width,
+      rightPanelWidth: 0,
+      contentHeight,
+      servicesPanelHeight: contentHeight,
+      systemPanelHeight: 0,
+      detailPanelHeight: 0,
+      globalLogsPanelHeight: 0,
+      maxServiceLogs: 0,
+      maxGlobalLogs: 0
+    };
+  }
+
   // Column Width Budgeting:
   // - Narrow (< 90): left = 28, right = width - 29
   // - Medium (90-115): left = 34, right = width - 35
@@ -55,8 +120,8 @@ export function useTerminalViewport(overrideWidth?: number, overrideHeight?: num
   const systemPanelHeight = isUltraCompactHeight ? 3 : 8;
   const servicesPanelHeight = Math.max(4, contentHeight - systemPanelHeight - 1);
 
-  // Right Column: Detail ~48%, Global Logs remainder (accounting for 1-row marginBottom)
-  const detailPanelHeight = isUltraCompactHeight ? 5 : Math.max(6, Math.floor(contentHeight * 0.48));
+  // Right Column: Detail ~50%, Global Logs remainder (accounting for 1-row marginBottom)
+  const detailPanelHeight = isUltraCompactHeight ? 5 : Math.max(7, Math.floor(contentHeight * 0.50));
   const globalLogsPanelHeight = Math.max(5, contentHeight - detailPanelHeight - 1);
 
   // Logs calculation

@@ -8,17 +8,24 @@ export interface FooterProps {
   isConnected?: boolean;
   activePanel?: ActivePanel;
   width?: number;
+  isMaximized?: boolean;
+  selectionText?: string | null;
   onToggleHelp?: () => void;
   onSwitchConfig?: () => void;
+  onToggleMaximize?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = React.memo(({ 
   isConnected = true, 
   activePanel = 'services', 
   width = 120,
+  isMaximized = false,
+  selectionText = null,
   onToggleHelp,
-  onSwitchConfig
+  onSwitchConfig,
+  onToggleMaximize
 }) => {
+  const isCompact = width < 115;
   const isNarrow = width < 85;
 
   return (
@@ -27,6 +34,8 @@ export const Footer: React.FC<FooterProps> = React.memo(({
       justifyContent="space-between" 
       alignItems="center" 
       width="100%" 
+      height={1}
+      overflow="hidden"
       backgroundColor={theme.colors.canvas}
       marginTop={0} 
       paddingX={1}
@@ -63,8 +72,38 @@ export const Footer: React.FC<FooterProps> = React.memo(({
         </Box>
         <Text color={theme.colors.stopped}>Run/Stop </Text>
 
-        {!isNarrow && (
+        <Box backgroundColor={selectionText ? '#0369A1' : theme.colors.card} paddingX={1} marginRight={1}>
+          <Text color={selectionText ? '#FFFFFF' : theme.colors.accent} bold>c</Text>
+        </Box>
+        <Text color={selectionText ? '#38BDF8' : theme.colors.textSecondary} bold={!!selectionText}>
+          {selectionText ? `Copy (${selectionText}) ` : 'Copy '}
+        </Text>
+
+        {activePanel !== 'services' && !isNarrow && (
           <>
+            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+              <Text color={theme.colors.accent} bold>v</Text>
+            </Box>
+            <Text color={theme.colors.textSecondary}>Expand </Text>
+          </>
+        )}
+
+        <Clickable onClick={() => onToggleMaximize?.()} flexDirection="row">
+          <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+            <Text color={theme.colors.accent} bold>z</Text>
+          </Box>
+          <Text color={isMaximized ? theme.colors.running : theme.colors.accent} bold>
+            {isMaximized ? 'Restore ' : 'Zoom '}
+          </Text>
+        </Clickable>
+
+        {!isCompact && (
+          <>
+            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+              <Text color={theme.colors.accent} bold>w</Text>
+            </Box>
+            <Text color={theme.colors.textSecondary}>Wrap </Text>
+
             <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
               <Text color={theme.colors.textPrimary} bold>/</Text>
             </Box>

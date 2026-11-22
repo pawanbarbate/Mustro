@@ -1,36 +1,84 @@
 #!/usr/bin/env node
-import React, { useState } from 'react';
-import { render } from 'ink';
+import React, { useState, useEffect } from 'react';
+import { render, Box } from 'ink';
 import DevPulse from './DevPulse.js';
 import SetupWizard from './components/wizard/SetupWizard.js';
 import ConfigSelectorScreen from './components/selector/ConfigSelectorScreen.js';
-import { loadConfigFile, hasConfigFile, getConfigFilePath, parseCliArgs, getConfigFileSummaries, ConfigFileSummary } from './services/configManager.js';
+import NoConfigWelcomeScreen from './components/welcome/NoConfigWelcomeScreen.js';
+import LoadingScreen from './components/common/LoadingScreen.js';
+import { useTerminalViewport } from './hooks/useTerminalViewport.js';
+import {
+  loadConfigFile,
+  hasConfigFile,
+  getConfigFilePath,
+  parseCliArgs,
+  getConfigFileSummaries,
+  getConfigFileSummariesAsync,
+  resolveInitialAppState,
+  ConfigFileSummary
+} from './services/configManager.js';
 import { processManager } from './services/processManager.js';
 import { DevPulseConfig } from './types/config.js';
 import { theme } from './theme/theme.js';
 import { logger } from './logger/logger.js';
 
-// 1. Enter alternate screen buffer first
-// 2. Set universal canvas background (OSC 11 + 24-bit TrueColor BCE: #0B0F19)
-// 3. Home cursor to row 1, col 1, hide cursor, and enable clean SGR mouse click & wheel reporting
-process.stdout.write(`\x1b[?1049h${theme.ansi.setCanvasBg}\x1b[H\x1b[?1000h\x1b[?1006h\x1b[?25l`);
+// 0. Handle CLI Help & Version flags before any terminal buffer initialization
+const args = process.argv.slice(2);
+if (args.includes('-h') || args.includes('--help')) {
+  console.log(`
+DevPulse - Modern Terminal Workspace Orchestrator for Multi-Service Apps
 
+Usage:
+  devpulse [options] [config-file]
+
+Options:
+  -c, --config <file>   Specify a custom DevPulse config file
+  -h, --help            Show this help message
+  -v, --version         Show DevPulse version
+
+Controls:
+  ↑/↓ or j/k            Navigate services
+  Enter                 Inspect service logs / details
+  r                     Restart selected service
+  s                     Stop or Start selected service
+  1 / 2                 Switch tabs (Logs, Errors)
+  /                     Search logs
+  f                     Cycle service filter
+  Space / l             Toggle live streaming
+  q / Ctrl+C            Exit DevPulse
+`);
+  process.exit(0);
+}
+
+if (args.includes('-v') || args.includes('--version')) {
+  console.log('devpulse v1.0.0');
+  process.exit(0);
+}
+
+if (!process.stdout.isTTY) {
+  console.error('Error: DevPulse requires an interactive TTY terminal to run.');
+  process.exit(1);
+}
+
+let isCleanedUp = false;
 const cleanup = () => {
-  // Terminate any active process trees immediately
+  if (isCleanedUp) return;
+  isCleanedUp = true;
   try {
     processManager.stopAllSync();
   } catch {}
-  // Reset terminal background color (OSC 111 + ANSI attribute reset), disable mouse reporting, exit alternate screen, and restore cursor
   try {
-    process.stdout.write(`${theme.ansi.resetCanvasBg}\x1b[?1000l\x1b[?1006l\x1b[?1049l\x1b[?25h`);
+    // Complete atomic restoration: reset colors, disable mouse, show cursor, leave alternate buffer
+    process.stdout.write(theme.ansi.restoreScreen);
   } catch {}
 };
-process.on('exit', cleanup);
-process.on('SIGINT', () => {
+
+process.once('exit', cleanup);
+process.once('SIGINT', () => {
   cleanup();
   process.exit(0);
 });
-process.on('SIGTERM', () => {
+process.once('SIGTERM', () => {
   cleanup();
   process.exit(0);
 });
@@ -43,46 +91,89 @@ if (cliArgs.configPath && !hasConfigFile(cliArgs.configPath)) {
 }
 
 const App: React.FC = () => {
-  const [summaries, setSummaries] = useState<ConfigFileSummary[]>(() =>
-    !cliArgs.configPath ? getConfigFileSummaries(process.cwd()) : []
+  // Initialize canvas background (TrueColor BCE) strictly on alternate screen buffer on mount and resize
+  useEffect(() => {
+    try {
+      process.stdout.write(`\x1b[?1049h${theme.ansi.initScreen}\x1b[?1000h\x1b[?1002h\x1b[?1006h\x1b[?25l`);
+    } catch {}
+
+    const handleResize = () => {
+      try {
+        process.stdout.write(theme.ansi.initScreen);
+      } catch {}
+    };
+
+    process.stdout.on('resize', handleResize);
+    return () => {
+      process.stdout.off('resize', handleResize);
+    };
+  }, []);
+
+  const viewport = useTerminalViewport();
+
+  const initialSyncState = cliArgs.configPath
+    ? resolveInitialAppState(cliArgs, process.cwd())
+    : null;
+
+  const [summaries, setSummaries] = useState<ConfigFileSummary[]>(
+    () => initialSyncState?.summaries || []
   );
 
-  const [activeConfigPath, setActiveConfigPath] = useState<string | null>(() => {
-    if (cliArgs.configPath) {
-      return getConfigFilePath(cliArgs.configPath);
-    }
-    const currentSummaries = getConfigFileSummaries(process.cwd());
-    if (currentSummaries.length === 1 && currentSummaries[0]) {
-      return currentSummaries[0].path;
-    }
-    return null;
-  });
+  const [activeConfigPath, setActiveConfigPath] = useState<string | null>(
+    () => initialSyncState?.activeConfigPath || null
+  );
 
-  const [config, setConfig] = useState<DevPulseConfig | null>(() => {
-    if (cliArgs.configPath) {
-      return loadConfigFile(cliArgs.configPath);
-    }
-    const currentSummaries = getConfigFileSummaries(process.cwd());
-    if (currentSummaries.length === 1 && currentSummaries[0]) {
-      return loadConfigFile(currentSummaries[0].path);
-    }
-    return null;
-  });
+  const [config, setConfig] = useState<DevPulseConfig | null>(
+    () => initialSyncState?.config || null
+  );
 
-  const [mode, setMode] = useState<'dashboard' | 'wizard' | 'selector'>(() => {
+  const [mode, setMode] = useState<'loading' | 'dashboard' | 'wizard' | 'selector' | 'welcome'>(
+    () => (initialSyncState ? initialSyncState.mode : 'loading')
+  );
+
+  const [showLoading, setShowLoading] = useState<boolean>(false);
+  const [scanProgress, setScanProgress] = useState<number>(10);
+  const [scanStatus, setScanStatus] = useState<string>('Scanning workspace for configuration profiles...');
+
+  useEffect(() => {
     if (cliArgs.configPath) {
-      return hasConfigFile(cliArgs.configPath) ? 'dashboard' : 'wizard';
+      return;
     }
-    const currentSummaries = getConfigFileSummaries(process.cwd());
-    if (currentSummaries.length > 1) {
-      return 'selector';
-    }
-    if (currentSummaries.length === 1 && currentSummaries[0]) {
-      const singleConfig = loadConfigFile(currentSummaries[0].path);
-      if (singleConfig) return 'dashboard';
-    }
-    return 'wizard';
-  });
+
+    let isMounted = true;
+    const thresholdTimer = setTimeout(() => {
+      if (isMounted) {
+        setShowLoading(true);
+      }
+    }, 120);
+
+    getConfigFileSummariesAsync(process.cwd(), (percent, statusText) => {
+      if (isMounted) {
+        setScanProgress(percent);
+        setScanStatus(statusText);
+      }
+    })
+      .then((asyncSummaries) => {
+        if (!isMounted) return;
+        clearTimeout(thresholdTimer);
+        const resolved = resolveInitialAppState(cliArgs, process.cwd(), asyncSummaries);
+        setSummaries(resolved.summaries);
+        setActiveConfigPath(resolved.activeConfigPath);
+        setConfig(resolved.config);
+        setMode(resolved.mode);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        clearTimeout(thresholdTimer);
+        logger.error(`Async config discovery error: ${err}`);
+        setMode('welcome');
+      });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(thresholdTimer);
+    };
+  }, []);
 
   const handleSelectProfile = (chosenPath: string) => {
     const loaded = loadConfigFile(chosenPath);
@@ -100,12 +191,11 @@ const App: React.FC = () => {
     } catch {}
 
     const freshSummaries = getConfigFileSummaries(process.cwd());
-    setSummaries(freshSummaries);
-    if (freshSummaries.length > 1) {
-      setMode('selector');
-    } else {
-      setMode('wizard');
-    }
+    const resolved = resolveInitialAppState(cliArgs, process.cwd(), freshSummaries);
+    setSummaries(resolved.summaries);
+    setActiveConfigPath(resolved.activeConfigPath);
+    setConfig(resolved.config);
+    setMode(resolved.mode);
   };
 
   const handleWizardComplete = (newConfig: DevPulseConfig) => {
@@ -114,6 +204,38 @@ const App: React.FC = () => {
     if (refreshed) setActiveConfigPath(refreshed);
     setMode('dashboard');
   };
+
+  if (mode === 'loading') {
+    if (!showLoading) {
+      return (
+        <Box
+          width={viewport.width}
+          height={viewport.height}
+          backgroundColor={theme.colors.canvas}
+        />
+      );
+    }
+    return (
+      <LoadingScreen
+        progress={scanProgress}
+        statusText={scanStatus}
+        width={viewport.width}
+        height={viewport.height}
+      />
+    );
+  }
+
+  if (mode === 'welcome') {
+    return (
+      <NoConfigWelcomeScreen
+        onCreateNew={() => setMode('wizard')}
+        onCancel={() => {
+          cleanup();
+          process.exit(0);
+        }}
+      />
+    );
+  }
 
   if (mode === 'selector') {
     return (
@@ -137,9 +259,10 @@ const App: React.FC = () => {
         onCancel={() => {
           if (summaries.length > 1) {
             setMode('selector');
+          } else if (summaries.length === 1) {
+            setMode('dashboard');
           } else {
-            cleanup();
-            process.exit(0);
+            setMode('welcome');
           }
         }}
       />

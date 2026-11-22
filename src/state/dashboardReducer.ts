@@ -44,6 +44,28 @@ export interface DashboardState {
   filterIndex: number;
   filterOptions: string[];
   showHelp: boolean;
+  toastMessage?: string | null;
+  toastExpiresAt?: number;
+  isWrapMode: boolean;
+  selectedLogIndex: number;
+  serviceSelectedLogIndex: number;
+  globalSelectedLogIndex: number;
+  serviceSelectedLogId: string | number | null;
+  globalSelectedLogId: string | number | null;
+  serviceSelectionAnchor: number | null;
+  globalSelectionAnchor: number | null;
+  serviceSelectionAnchorLogId: string | number | null;
+  globalSelectionAnchorLogId: string | number | null;
+  serviceCharSelection: { start: number; end: number } | null;
+  globalCharSelection: { start: number; end: number } | null;
+  serviceJsonLineScroll: number;
+  serviceJsonLineScrollById: Record<string | number, number>;
+  globalJsonLineScroll: number;
+  expandedLogIds: Record<string | number, boolean>;
+  serviceExpandedLogIds: Record<string | number, boolean>;
+  globalExpandedLogIds: Record<string | number, boolean>;
+  copiedLogId: string | number | null;
+  maximizedPanel: 'none' | 'serviceLogs' | 'globalLogs' | 'services';
 }
 
 export const initialDashboardState: DashboardState = {
@@ -64,12 +86,33 @@ export const initialDashboardState: DashboardState = {
   isSearching: false,
   filterIndex: 0,
   filterOptions: FILTER_OPTIONS,
-  showHelp: false
+  showHelp: false,
+  toastMessage: null,
+  isWrapMode: false,
+  selectedLogIndex: 0,
+  serviceSelectedLogIndex: 0,
+  globalSelectedLogIndex: 0,
+  serviceSelectedLogId: null,
+  globalSelectedLogId: null,
+  serviceSelectionAnchor: null,
+  globalSelectionAnchor: null,
+  serviceSelectionAnchorLogId: null,
+  globalSelectionAnchorLogId: null,
+  serviceCharSelection: null,
+  globalCharSelection: null,
+  serviceJsonLineScroll: 0,
+  serviceJsonLineScrollById: {},
+  globalJsonLineScroll: 0,
+  expandedLogIds: {},
+  serviceExpandedLogIds: {},
+  globalExpandedLogIds: {},
+  copiedLogId: null,
+  maximizedPanel: 'none'
 };
 
 export function configToServices(config?: DevPulseConfig): Service[] {
   if (!config || !config.services || config.services.length === 0) {
-    return INITIAL_SERVICES;
+    return [];
   }
 
   return config.services.map((s, idx) => ({
@@ -83,17 +126,10 @@ export function configToServices(config?: DevPulseConfig): Service[] {
       ? s.command.join(' && ')
       : (s.command || (Array.isArray(s.commands) ? s.commands.join(' && ') : '')),
     path: s.path,
-    port: s.port ? `:${s.port}` : ':3000',
+    port: s.port ? `:${s.port}` : '',
     pid: '-',
     errors: 0,
     rawConfig: s,
-    metrics: {
-      cpu: '0%',
-      memory: '0 MB',
-      p50: '0 ms',
-      p99: '0 ms',
-      requests: '0 req/min'
-    },
     env: [],
     logs: [],
     errorLogs: []
@@ -102,20 +138,25 @@ export function configToServices(config?: DevPulseConfig): Service[] {
 
 export function createInitialDashboardState(config?: DevPulseConfig): DashboardState {
   const services = configToServices(config);
-  const filterOptions = config?.services && config.services.length > 0
-    ? ['All Services', ...config.services.map(s => s.name)]
-    : FILTER_OPTIONS;
+  const filterOptions = services.length > 0
+    ? ['All Services', ...services.map(s => s.name)]
+    : ['All Services'];
+
+  const now = new Date().toTimeString().split(' ')[0] || '00:00:00';
 
   return {
     ...initialDashboardState,
+    time: now,
+    uptimeSeconds: 0,
     startedAt: Date.now(),
     services,
-    globalLogs: config?.services && config.services.length > 0 ? [] : INITIAL_GLOBAL_LOGS,
+    globalLogs: [],
     filterOptions,
     metrics: {
-      ...INITIAL_SYSTEM_METRICS,
       servicesTotal: services.length,
-      servicesRunning: 0
+      servicesRunning: 0,
+      uptime: '0s',
+      errorsTotal: 0
     }
   };
 }
@@ -142,11 +183,25 @@ export type DashboardAction =
   | { type: 'START_RESTART_SERVICE'; index: number }
   | { type: 'FINISH_RESTART_SERVICE'; index: number }
   | { type: 'TOGGLE_STOP_SERVICE'; index: number }
-  | { type: 'TICK_CLOCK'; time: string; cpuChange: number }
-  | { type: 'APPEND_GLOBAL_LOG'; log: LogEntry; timeStr: string }
+  | { type: 'TICK_CLOCK'; time: string }
   | { type: 'APPEND_REAL_LOG'; serviceName: string; log: LogEntry }
   | { type: 'PROCESS_STATUS_CHANGED'; serviceName: string; status: ServiceStatus; pid?: number; error?: string; statusText?: string }
-  | { type: 'UPDATE_SERVICE_METRICS'; metrics: Record<string, { cpu?: string; memory?: string }> };
+  | { type: 'SHOW_TOAST'; message: string; durationMs?: number }
+  | { type: 'HIDE_TOAST' }
+  | { type: 'TOGGLE_WRAP_MODE' }
+  | { type: 'SELECT_LOG_ROW'; index: number; logId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'NAVIGATE_LOG_SELECTION'; delta: number; maxIndex: number; logId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'EXTEND_LOG_SELECTION'; delta: number; maxIndex: number; headIndex?: number; anchorLogId?: string | number | null; headLogId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'SET_LOG_SELECTION_RANGE'; anchorIndex: number | null; headIndex: number; anchorLogId?: string | number | null; headLogId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'EXTEND_CHAR_SELECTION'; delta: number; maxLen: number; panel?: 'service' | 'global' }
+  | { type: 'SET_CHAR_SELECTION_RANGE'; start: number; end: number; logId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'CLEAR_LOG_SELECTION'; panel?: 'service' | 'global' }
+  | { type: 'SCROLL_JSON_LINES'; delta: number; maxScroll: number; logId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'RESET_JSON_LINE_SCROLL'; logId?: string | number; panel?: 'service' | 'global' }
+  | { type: 'TOGGLE_LOG_EXPANSION'; logId: string | number; panel?: 'service' | 'global' }
+  | { type: 'TOGGLE_ALL_JSON_EXPANSION'; forceState?: boolean }
+  | { type: 'TOGGLE_MAXIMIZE_PANEL'; panel?: ActivePanel }
+  | { type: 'SET_COPIED_FLASH'; logId: string | number | null };
 
 export function dashboardReducer(state: DashboardState, action: DashboardAction): DashboardState {
   switch (action.type) {
@@ -156,7 +211,20 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         ...state,
         selectedIndex: clamped,
         activePanel: 'services',
-        serviceLogScroll: 0
+        serviceLogScroll: 0,
+        selectedLogIndex: 0,
+        serviceSelectedLogIndex: 0,
+        serviceSelectedLogId: null,
+        serviceSelectionAnchor: null,
+        serviceSelectionAnchorLogId: null,
+        globalSelectionAnchor: null,
+        globalSelectionAnchorLogId: null,
+        serviceCharSelection: null,
+        globalCharSelection: null,
+        serviceJsonLineScroll: 0,
+        globalJsonLineScroll: 0,
+        serviceExpandedLogIds: {},
+        serviceJsonLineScrollById: {}
       };
     }
 
@@ -166,7 +234,20 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         ...state,
         selectedIndex: nextIndex,
         activePanel: 'services',
-        serviceLogScroll: 0
+        serviceLogScroll: 0,
+        selectedLogIndex: 0,
+        serviceSelectedLogIndex: 0,
+        serviceSelectedLogId: null,
+        serviceSelectionAnchor: null,
+        serviceSelectionAnchorLogId: null,
+        globalSelectionAnchor: null,
+        globalSelectionAnchorLogId: null,
+        serviceCharSelection: null,
+        globalCharSelection: null,
+        serviceJsonLineScroll: 0,
+        globalJsonLineScroll: 0,
+        serviceExpandedLogIds: {},
+        serviceJsonLineScrollById: {}
       };
     }
 
@@ -181,7 +262,20 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         ...state,
         activeTab: action.tab,
         activePanel: 'serviceLogs',
-        serviceLogScroll: 0
+        serviceLogScroll: 0,
+        selectedLogIndex: 0,
+        serviceSelectedLogIndex: 0,
+        serviceSelectedLogId: null,
+        serviceSelectionAnchor: null,
+        serviceSelectionAnchorLogId: null,
+        globalSelectionAnchor: null,
+        globalSelectionAnchorLogId: null,
+        serviceCharSelection: null,
+        globalCharSelection: null,
+        serviceJsonLineScroll: 0,
+        globalJsonLineScroll: 0,
+        serviceExpandedLogIds: {},
+        serviceJsonLineScrollById: {}
       };
 
     case 'SET_NARROW_TAB':
@@ -351,7 +445,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         : state.uptimeSeconds + 1;
       const mins = Math.floor(nextUptime / 60);
       const secs = nextUptime % 60;
-      const newCpu = Math.min(48, Math.max(12, state.metrics.cpu + action.cpuChange));
+      const uptimeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 
       const updatedServices = state.services.map(s => {
         if (s.status === 'running') {
@@ -369,15 +463,29 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
         return s;
       });
 
+      const totalErrors = updatedServices.reduce((acc, s) => acc + (s.errors || 0), 0);
+      const runningCount = updatedServices.filter(s => s.status === 'running').length;
+
+      let toastMessage = state.toastMessage;
+      let toastExpiresAt = state.toastExpiresAt;
+      if (toastExpiresAt && now >= toastExpiresAt) {
+        toastMessage = null;
+        toastExpiresAt = undefined;
+      }
+
       return {
         ...state,
         time: action.time,
         uptimeSeconds: nextUptime,
         services: updatedServices,
+        toastMessage,
+        toastExpiresAt,
         metrics: {
           ...state.metrics,
-          uptime: `${mins}m ${secs}s`,
-          cpu: newCpu
+          uptime: uptimeStr,
+          servicesRunning: runningCount,
+          servicesTotal: updatedServices.length,
+          errorsTotal: totalErrors
         }
       };
     }
@@ -386,26 +494,35 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
       const nextGlobal = [...state.globalLogs.slice(-200), action.log];
       const isError = action.log.level === 'error' || action.log.level === 'ERROR';
 
+      let totalErrors = 0;
       const nextServices = state.services.map(s => {
         if (s.name.toLowerCase() === action.serviceName.toLowerCase()) {
           const nextLogs = [...(s.logs || []).slice(-200), action.log];
           const nextErrors = isError
             ? [...(s.errorLogs || []).slice(-100), action.log]
             : (s.errorLogs || []);
+          const updatedErrors = s.errors + (isError ? 1 : 0);
+          totalErrors += updatedErrors;
           return {
             ...s,
             logs: nextLogs,
             errorLogs: nextErrors,
-            errors: s.errors + (isError ? 1 : 0)
+            errors: updatedErrors,
+            lastError: isError ? action.log.message : s.lastError
           };
         }
+        totalErrors += (s.errors || 0);
         return s;
       });
 
       return {
         ...state,
         globalLogs: nextGlobal,
-        services: nextServices
+        services: nextServices,
+        metrics: {
+          ...state.metrics,
+          errorsTotal: totalErrors
+        }
       };
     }
 
@@ -425,6 +542,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
             startedAt,
             uptime: isNowRunning ? (wasRunning ? s.uptime : '0s') : '0s',
             uptimeSeconds: isNowRunning ? (wasRunning ? (s.uptimeSeconds || 0) : 0) : 0,
+            lastError: action.error || s.lastError,
+            restarts: (action.status === 'starting' && wasRunning) ? (s.restarts || 0) + 1 : s.restarts,
             restartingServiceId: action.status === 'running' && state.restartingServiceId === s.id
               ? null
               : state.restartingServiceId
@@ -445,50 +564,349 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
       };
     }
 
-    case 'UPDATE_SERVICE_METRICS': {
-      const nextServices = state.services.map(s => {
-        const m = action.metrics[s.name];
-        if (m) {
-          return {
-            ...s,
-            metrics: {
-              ...s.metrics,
-              cpu: m.cpu || s.metrics?.cpu,
-              memory: m.memory || s.metrics?.memory
-            }
-          };
-        }
-        return s;
-      });
-
+    case 'SHOW_TOAST': {
       return {
         ...state,
-        services: nextServices
+        toastMessage: action.message,
+        toastExpiresAt: Date.now() + (action.durationMs ?? 2500)
       };
     }
 
-    case 'APPEND_GLOBAL_LOG': {
-      const nextGlobal = [...state.globalLogs.slice(-30), action.log];
-      const nextServices = state.services.map(s => {
-        if (s.name.toUpperCase().includes(action.log.service.toUpperCase())) {
-          return {
-            ...s,
-            logs: [...(s.logs || []).slice(-25), {
-              id: `${action.log.id}-s`,
-              timestamp: action.timeStr,
-              service: action.log.service,
-              level: action.log.level,
-              message: action.log.message
-            }]
-          };
-        }
-        return s;
-      });
-
+    case 'HIDE_TOAST': {
       return {
         ...state,
-        globalLogs: nextGlobal,
-        services: nextServices
+        toastMessage: null,
+        toastExpiresAt: undefined
+      };
+    }
+
+    case 'TOGGLE_WRAP_MODE': {
+      return {
+        ...state,
+        isWrapMode: !state.isWrapMode
+      };
+    }
+
+    case 'SELECT_LOG_ROW': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      const idx = Math.max(0, action.index);
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectedLogIndex: idx,
+          serviceSelectedLogId: action.logId ?? null,
+          selectedLogIndex: idx,
+          serviceSelectionAnchor: null,
+          serviceSelectionAnchorLogId: null,
+          serviceCharSelection: null,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectedLogIndex: idx,
+          globalSelectedLogId: action.logId ?? null,
+          selectedLogIndex: idx,
+          globalSelectionAnchor: null,
+          globalSelectionAnchorLogId: null,
+          globalCharSelection: null,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'NAVIGATE_LOG_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const nextIndex = Math.max(0, Math.min(action.maxIndex, state.serviceSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          serviceSelectedLogIndex: nextIndex,
+          serviceSelectedLogId: action.logId ?? null,
+          selectedLogIndex: nextIndex,
+          serviceSelectionAnchor: null,
+          serviceSelectionAnchorLogId: null,
+          serviceCharSelection: null,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        const nextIndex = Math.max(0, Math.min(action.maxIndex, state.globalSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          globalSelectedLogIndex: nextIndex,
+          globalSelectedLogId: action.logId ?? null,
+          selectedLogIndex: nextIndex,
+          globalSelectionAnchor: null,
+          globalSelectionAnchorLogId: null,
+          globalCharSelection: null,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'EXTEND_LOG_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const anchor = state.serviceSelectionAnchor !== null ? state.serviceSelectionAnchor : state.serviceSelectedLogIndex;
+        const anchorLogId = state.serviceSelectionAnchorLogId ?? action.anchorLogId ?? state.serviceSelectedLogId;
+        const nextIndex = action.headIndex !== undefined
+          ? Math.max(0, Math.min(action.maxIndex, action.headIndex))
+          : Math.max(0, Math.min(action.maxIndex, state.serviceSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          serviceSelectionAnchor: anchor,
+          serviceSelectionAnchorLogId: anchorLogId,
+          serviceSelectedLogIndex: nextIndex,
+          serviceSelectedLogId: action.headLogId ?? null,
+          selectedLogIndex: nextIndex,
+          serviceCharSelection: null,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        const anchor = state.globalSelectionAnchor !== null ? state.globalSelectionAnchor : state.globalSelectedLogIndex;
+        const anchorLogId = state.globalSelectionAnchorLogId ?? action.anchorLogId ?? state.globalSelectedLogId;
+        const nextIndex = action.headIndex !== undefined
+          ? Math.max(0, Math.min(action.maxIndex, action.headIndex))
+          : Math.max(0, Math.min(action.maxIndex, state.globalSelectedLogIndex + action.delta));
+        return {
+          ...state,
+          globalSelectionAnchor: anchor,
+          globalSelectionAnchorLogId: anchorLogId,
+          globalSelectedLogIndex: nextIndex,
+          globalSelectedLogId: action.headLogId ?? null,
+          selectedLogIndex: nextIndex,
+          globalCharSelection: null,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'SET_LOG_SELECTION_RANGE': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      const head = Math.max(0, action.headIndex);
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: action.anchorIndex,
+          serviceSelectionAnchorLogId: action.anchorLogId ?? null,
+          serviceSelectedLogIndex: head,
+          serviceSelectedLogId: action.headLogId ?? null,
+          selectedLogIndex: head,
+          serviceCharSelection: null,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectionAnchor: action.anchorIndex,
+          globalSelectionAnchorLogId: action.anchorLogId ?? null,
+          globalSelectedLogIndex: head,
+          globalSelectedLogId: action.headLogId ?? null,
+          selectedLogIndex: head,
+          globalCharSelection: null,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'EXTEND_CHAR_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const cur = state.serviceCharSelection;
+        let nextRange: { start: number; end: number } | null = null;
+        if (!cur) {
+          if (action.delta > 0) {
+            nextRange = { start: 0, end: Math.min(action.maxLen, action.delta) };
+          }
+        } else {
+          const nextEnd = Math.max(0, Math.min(action.maxLen, cur.end + action.delta));
+          if (nextEnd <= cur.start) {
+            nextRange = null;
+          } else {
+            nextRange = { start: cur.start, end: nextEnd };
+          }
+        }
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceSelectionAnchorLogId: null,
+          serviceCharSelection: nextRange
+        };
+      } else {
+        const cur = state.globalCharSelection;
+        let nextRange: { start: number; end: number } | null = null;
+        if (!cur) {
+          if (action.delta > 0) {
+            nextRange = { start: 0, end: Math.min(action.maxLen, action.delta) };
+          }
+        } else {
+          const nextEnd = Math.max(0, Math.min(action.maxLen, cur.end + action.delta));
+          if (nextEnd <= cur.start) {
+            nextRange = null;
+          } else {
+            nextRange = { start: cur.start, end: nextEnd };
+          }
+        }
+        return {
+          ...state,
+          globalSelectionAnchor: null,
+          globalSelectionAnchorLogId: null,
+          globalCharSelection: nextRange
+        };
+      }
+    }
+
+    case 'SET_CHAR_SELECTION_RANGE': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      const start = Math.max(0, Math.min(action.start, action.end));
+      const end = Math.max(0, Math.max(action.start, action.end));
+      const range = end > start ? { start, end } : null;
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceSelectionAnchorLogId: null,
+          serviceSelectedLogId: action.logId ?? state.serviceSelectedLogId,
+          serviceCharSelection: range
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectionAnchor: null,
+          globalSelectionAnchorLogId: null,
+          globalSelectedLogId: action.logId ?? state.globalSelectedLogId,
+          globalCharSelection: range
+        };
+      }
+    }
+
+    case 'CLEAR_LOG_SELECTION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        return {
+          ...state,
+          serviceSelectionAnchor: null,
+          serviceSelectionAnchorLogId: null,
+          serviceCharSelection: null
+        };
+      } else {
+        return {
+          ...state,
+          globalSelectionAnchor: null,
+          globalSelectionAnchorLogId: null,
+          globalCharSelection: null
+        };
+      }
+    }
+
+    case 'SCROLL_JSON_LINES': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const nextOffset = Math.max(0, Math.min(action.maxScroll, state.serviceJsonLineScroll + action.delta));
+        if (action.logId !== undefined) {
+          const currentOffset = state.serviceJsonLineScrollById[action.logId] || 0;
+          const logOffset = Math.max(0, Math.min(action.maxScroll, currentOffset + action.delta));
+          return {
+            ...state,
+            serviceJsonLineScroll: nextOffset,
+            serviceJsonLineScrollById: {
+              ...state.serviceJsonLineScrollById,
+              [action.logId]: logOffset
+            }
+          };
+        }
+        return {
+          ...state,
+          serviceJsonLineScroll: nextOffset
+        };
+      } else {
+        const nextOffset = Math.max(0, Math.min(action.maxScroll, state.globalJsonLineScroll + action.delta));
+        return {
+          ...state,
+          globalJsonLineScroll: nextOffset
+        };
+      }
+    }
+
+    case 'RESET_JSON_LINE_SCROLL': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        if (action.logId !== undefined) {
+          return {
+            ...state,
+            serviceJsonLineScroll: 0,
+            serviceJsonLineScrollById: {
+              ...state.serviceJsonLineScrollById,
+              [action.logId]: 0
+            }
+          };
+        }
+        return {
+          ...state,
+          serviceJsonLineScroll: 0
+        };
+      } else {
+        return {
+          ...state,
+          globalJsonLineScroll: 0
+        };
+      }
+    }
+
+    case 'TOGGLE_LOG_EXPANSION': {
+      const panel = action.panel || (state.activePanel === 'serviceLogs' ? 'service' : 'global');
+      if (panel === 'service') {
+        const isCurrentlyExpanded = !!state.serviceExpandedLogIds[action.logId];
+        const nextServiceExpanded = {
+          ...state.serviceExpandedLogIds,
+          [action.logId]: !isCurrentlyExpanded
+        };
+        const nextServiceScrollById = { ...state.serviceJsonLineScrollById };
+        if (isCurrentlyExpanded) {
+          delete nextServiceScrollById[action.logId];
+        }
+        return {
+          ...state,
+          serviceExpandedLogIds: nextServiceExpanded,
+          serviceJsonLineScrollById: nextServiceScrollById,
+          expandedLogIds: nextServiceExpanded
+        };
+      } else {
+        const isCurrentlyExpanded = !!state.globalExpandedLogIds[action.logId];
+        // Accordion in global logs: expanding a log collapses any prior expanded log in the global stream
+        // This guarantees that multiple bulky JSON trees never crowd out logs from other services
+        const nextGlobalExpanded = isCurrentlyExpanded ? { [action.logId]: false } : { [action.logId]: true };
+        return {
+          ...state,
+          globalExpandedLogIds: nextGlobalExpanded,
+          expandedLogIds: nextGlobalExpanded
+        };
+      }
+    }
+
+    case 'TOGGLE_ALL_JSON_EXPANSION': {
+      return {
+        ...state,
+        expandedLogIds: action.forceState !== undefined
+          ? (action.forceState ? state.expandedLogIds : {})
+          : {}
+      };
+    }
+
+    case 'TOGGLE_MAXIMIZE_PANEL': {
+      const panel = action.panel || state.activePanel;
+      const target = panel === 'serviceLogs' ? 'serviceLogs' : panel === 'globalLogs' ? 'globalLogs' : 'services';
+      const nextMaximized = state.maximizedPanel === target ? 'none' : target;
+      return {
+        ...state,
+        maximizedPanel: nextMaximized
+      };
+    }
+
+    case 'SET_COPIED_FLASH': {
+      return {
+        ...state,
+        copiedLogId: action.logId
       };
     }
 
@@ -496,4 +914,3 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
       return state;
   }
 }
-

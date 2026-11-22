@@ -1,9 +1,10 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { Service, ActiveTab } from '../types/index.js';
+import { Service, ActiveTab, LogEntry } from '../types/index.js';
 import Clickable from './common/ClickManager.js';
 import { theme } from '../theme/theme.js';
 import useSpinner from '../hooks/useSpinner.js';
+import { parseJsonLog, formatJsonToHighlightedLines, JsonLogParseResult, calculateVisibleLogWindow, getLogDisplayText, getLogMessageColumnOffset, getLogWindowAnchorId } from '../utils/logFormatter.js';
 
 export interface ServiceDetailPanelProps {
   service?: Service;
@@ -11,14 +12,32 @@ export interface ServiceDetailPanelProps {
   isRestarting?: boolean;
   maxLogs?: number;
   isFocused?: boolean;
+  isMaximized?: boolean;
   scrollOffset?: number;
   panelWidth?: number;
   height?: number;
   isUltraCompact?: boolean;
+  isWrapMode?: boolean;
+  selectedLogIndex?: number;
+  selectedLogId?: string | number | null;
+  selectionAnchor?: number | null;
+  selectionAnchorLogId?: string | number | null;
+  charSelection?: { start: number; end: number } | null;
+  jsonLineScroll?: number;
+  jsonLineScrollById?: Record<string | number, number>;
+  expandedLogIds?: Record<string | number, boolean>;
+  copiedLogId?: string | number | null;
   onRestart?: () => void;
   onToggleStop?: () => void;
   onSelectTab?: (tab: ActiveTab) => void;
+  onToggleWrap?: () => void;
+  onToggleMaximize?: () => void;
+  onScrollJson?: (delta: number, logId?: string | number) => void;
   onFocus?: () => void;
+  onCopyCurrent?: () => void;
+  onCopyLog?: (log: LogEntry) => void;
+  onSelectLogIndex?: (index: number, isShift?: boolean, logId?: string | number) => void;
+  onToggleExpandLog?: (logId: string | number) => void;
 }
 
 const cleanPort = (p?: string | number) => {
@@ -34,16 +53,52 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
   isRestarting = false, 
   maxLogs = 6,
   isFocused = false,
+  isMaximized = false,
   scrollOffset = 0,
   panelWidth = 53,
   height,
   isUltraCompact = false,
+  isWrapMode = false,
+  selectedLogIndex = 0,
+  selectedLogId = null,
+  selectionAnchor = null,
+  selectionAnchorLogId = null,
+  charSelection = null,
+  jsonLineScroll = 0,
+  jsonLineScrollById = {},
+  expandedLogIds = {},
+  copiedLogId = null,
   onRestart,
   onToggleStop,
   onSelectTab,
-  onFocus
+  onToggleWrap,
+  onToggleMaximize,
+  onScrollJson,
+  onFocus,
+  onCopyCurrent,
+  onCopyLog,
+  onSelectLogIndex,
+  onToggleExpandLog
 }) => {
-  if (!service) return null;
+  if (!service) {
+    return (
+      <Box 
+        borderStyle="round" 
+        borderColor={theme.colors.borderDefault} 
+        borderBackgroundColor={theme.colors.canvas}
+        backgroundColor={theme.colors.surface}
+        flexDirection="column" 
+        justifyContent="center"
+        alignItems="center"
+        paddingX={2}
+        width={panelWidth}
+        height={height}
+        marginBottom={1}
+      >
+        <Text color={theme.colors.textMuted}>No service selected</Text>
+      </Box>
+    );
+  }
 
   const isNarrow = panelWidth < 65;
   const innerWidth = Math.max(20, panelWidth - 4);
@@ -110,25 +165,101 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
 
   const status = getStatusInfo();
 
-  const renderLogMessage = (msg: string) => {
-    const truncated = msg.length > maxMsgLen ? msg.slice(0, maxMsgLen - 1) + '…' : msg;
+  const renderLogMessage = (msg: string, jsonResult?: JsonLogParseResult, isBadgeShown?: boolean, isCharSelected?: boolean, displayMessage?: string) => {
+    // 1. Smart Structured JSON log rendering
+    const res = jsonResult || parseJsonLog(msg);
+    if (res.isJson) {
+      const isJsonErr = res.error || res.level?.toLowerCase() === 'error';
+      const isJsonWarn = res.level?.toLowerCase() === 'warn';
+      const msgColor = isJsonErr ? theme.colors.stopped : isJsonWarn ? theme.colors.warning : theme.colors.textPrimary;
 
-    if (truncated.includes('✖')) {
+      const eventMsg = res.canonicalMsg || (res.extraPairs && res.extraPairs.length > 0
+        ? res.extraPairs.map(p => `${p.key}: ${p.val}`).join(' | ')
+        : (res.error || 'Structured payload'));
+      const displayMsg = displayMessage ?? (isWrapMode ? eventMsg : (eventMsg.length > maxMsgLen ? eventMsg.slice(0, maxMsgLen - 1) + '…' : eventMsg));
+
+      // Character selection active on this row: apply ONLY to formatted displayMsg!
+      if (isCharSelected && charSelection) {
+        const s = Math.max(0, Math.min(displayMsg.length, charSelection.start));
+        const e = Math.max(s, Math.min(displayMsg.length, charSelection.end));
+        const before = displayMsg.slice(0, s);
+        const selected = displayMsg.slice(s, e);
+        const after = displayMsg.slice(e);
+        return (
+          <Text wrap={isWrapMode ? 'wrap' : undefined}>
+            {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
+            {res.method && <Text color={theme.colors.borderFocus} bold>{res.method} </Text>}
+            {res.path && <Text color={theme.colors.textPrimary}>{res.path} </Text>}
+            {res.status && (
+              <Text color={String(res.status).startsWith('2') ? theme.colors.running : theme.colors.stopped} bold>
+                [{res.status}]{' '}
+              </Text>
+            )}
+            {res.latency && <Text color={theme.colors.textMuted}>({res.latency}) </Text>}
+            <Text color={msgColor}>{before}</Text>
+            <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
+            <Text color={msgColor}>{after}</Text>
+          </Text>
+        );
+      }
+
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
+          {!isBadgeShown && <Text color={theme.colors.accent} bold>[JSON] </Text>}
+          {res.method && (
+            <Text color={theme.colors.borderFocus} bold>{res.method} </Text>
+          )}
+          {res.path && (
+            <Text color={theme.colors.textPrimary}>{res.path} </Text>
+          )}
+          {res.status && (
+            <Text color={String(res.status).startsWith('2') ? theme.colors.running : theme.colors.stopped} bold>
+              [{res.status}] 
+            </Text>
+          )}
+          {res.latency && (
+            <Text color={theme.colors.textMuted}>({res.latency}) </Text>
+          )}
+          <Text color={msgColor}>{displayMsg}</Text>
+        </Text>
+      );
+    }
+
+    // 2. Standard log message rendering
+    const displayStr = displayMessage ?? (isWrapMode ? msg : (msg.length > maxMsgLen ? msg.slice(0, maxMsgLen - 1) + '…' : msg));
+
+    // Character selection on standard log:
+    if (isCharSelected && charSelection) {
+      const s = Math.max(0, Math.min(displayStr.length, charSelection.start));
+      const e = Math.max(s, Math.min(displayStr.length, charSelection.end));
+      const before = displayStr.slice(0, s);
+      const selected = displayStr.slice(s, e);
+      const after = displayStr.slice(e);
+      return (
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
+          <Text color={theme.colors.textPrimary}>{before}</Text>
+          <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{selected}</Text>
+          <Text color={theme.colors.textPrimary}>{after}</Text>
+        </Text>
+      );
+    }
+
+    if (displayStr.includes('✖')) {
+      return (
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.stopped} bold>✖ </Text>
-          <Text color={theme.colors.stopped}>{truncated.replace('✖', '').trim()}</Text>
+          <Text color={theme.colors.stopped}>{displayStr.replace('✖', '').trim()}</Text>
         </Text>
       );
     }
 
     const httpRegex = /^(POST|GET|PUT|DELETE)\s+(\S+)\s+(\d{3})\s+(\([^)]+\))$/;
-    const httpMatch = truncated.trim().match(httpRegex);
+    const httpMatch = displayStr.trim().match(httpRegex);
     if (httpMatch) {
       const [, method, path, statusCode, latency] = httpMatch;
       const statusCodeColor = (statusCode || '').startsWith('2') ? theme.colors.running : theme.colors.stopped;
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.accent} bold>{method} </Text>
           <Text color={theme.colors.textPrimary}>{path}  </Text>
           <Text color={statusCodeColor} bold>{statusCode}  </Text>
@@ -137,26 +268,71 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
       );
     }
 
-    if (truncated.includes('http://')) {
-      const [before, url] = truncated.split('http://');
+    if (displayStr.includes('http://')) {
+      const [before, url] = displayStr.split('http://');
       return (
-        <Text>
+        <Text wrap={isWrapMode ? 'wrap' : undefined}>
           <Text color={theme.colors.textPrimary}>{before}</Text>
           <Text color={theme.colors.accent} underline>http://{url}</Text>
         </Text>
       );
     }
 
-    return <Text color={theme.colors.textPrimary}>{truncated}</Text>;
+    return <Text color={theme.colors.textPrimary} wrap={isWrapMode ? 'wrap' : undefined}>{displayStr}</Text>;
   };
 
-  const allLogs = service.logs || [];
-  const totalLogs = allLogs.length;
-  const maxScroll = Math.max(0, totalLogs - maxLogs);
-  const effectiveOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
-  const endIdx = totalLogs - effectiveOffset;
-  const startIdx = Math.max(0, endIdx - maxLogs);
-  const visibleLogs = allLogs.slice(startIdx, endIdx);
+  const currentLogs: LogEntry[] = activeTab === 'errors'
+    ? (service.errorLogs || [])
+    : (service.logs || []);
+  const totalLogs = currentLogs.length;
+
+  // Strict Line Budgeting:
+  // Overhead: Border (2) + Header (1) + Subheader (1) + Hairline (1) = 5 lines.
+  // When !isUltraCompact, add Tabs row (1) + Hairline (1) = 2 lines. Total = 7 lines.
+  const overheadLines = isUltraCompact ? 5 : 7;
+  const availableLogLines = Math.max(1, (height || 10) - overheadLines);
+  const activeExpandedLogId = getLogWindowAnchorId(currentLogs, selectedLogId, expandedLogIds, selectionAnchorLogId);
+
+  const {
+    visibleLogs,
+    startIdx,
+    endIdx,
+    effectiveOffset,
+    maxJsonLines
+  } = calculateVisibleLogWindow({
+    logs: currentLogs,
+    availableLines: availableLogLines,
+    scrollOffset,
+    expandedLogIds,
+    isWrapMode,
+    anchorLogId: activeExpandedLogId || null
+  });
+
+  const resolvedSelectedIndex = selectedLogId === null
+    ? -1
+    : visibleLogs.findIndex(log => log.id === selectedLogId);
+  const safeSelectedIndex = selectedLogId !== null
+    ? resolvedSelectedIndex
+    : Math.min(selectedLogIndex, Math.max(0, visibleLogs.length - 1));
+  const resolvedAnchorIndex = selectionAnchorLogId === null
+    ? -1
+    : visibleLogs.findIndex(log => log.id === selectionAnchorLogId);
+  const visibleAnchorIndex = selectionAnchorLogId !== null
+    ? (resolvedAnchorIndex >= 0 ? resolvedAnchorIndex : null)
+    : selectionAnchor;
+  const hasRangeSelection = isFocused && safeSelectedIndex >= 0 && visibleAnchorIndex !== null && visibleAnchorIndex !== safeSelectedIndex;
+  const rangeMin = visibleAnchorIndex !== null ? Math.min(visibleAnchorIndex, safeSelectedIndex) : safeSelectedIndex;
+  const rangeMax = visibleAnchorIndex !== null ? Math.max(visibleAnchorIndex, safeSelectedIndex) : safeSelectedIndex;
+  const selectedLinesCount = hasRangeSelection ? rangeMax - rangeMin + 1 : 1;
+
+  let selectedCharsCount = 0;
+  if (charSelection) {
+    selectedCharsCount = Math.max(0, charSelection.end - charSelection.start);
+  } else if (hasRangeSelection) {
+    for (let i = rangeMin; i <= rangeMax && i < visibleLogs.length; i++) {
+      selectedCharsCount += (visibleLogs[i]?.message || '').length;
+    }
+  }
 
   return (
     <Clickable 
@@ -170,10 +346,20 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
       paddingY={0}
       width={panelWidth}
       height={height}
+      overflow="hidden"
       marginBottom={1}
     >
       {/* 1. Header: Service Name, Status Badge & Boxed Action Buttons (Guaranteed 1 line) */}
-      <Box flexDirection="row" justifyContent="space-between" alignItems="center" flexWrap="nowrap" marginBottom={0}>
+      <Box 
+        flexDirection="row" 
+        justifyContent="space-between" 
+        alignItems="center" 
+        flexWrap="nowrap" 
+        height={1}
+        flexShrink={0}
+        overflow="hidden"
+        marginBottom={0}
+      >
         {/* Left: Name and Framed Status Pill */}
         <Box flexDirection="row" alignItems="center" flexShrink={0}>
           <Text color={status.dot}>● </Text>
@@ -204,19 +390,40 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
             </Box>
           </Clickable>
           <Text> </Text>
-          <Box backgroundColor={theme.colors.card} paddingX={1}>
-            <Text color={theme.colors.textMuted}>[ ··· ]</Text>
-          </Box>
+          <Clickable onClick={() => onCopyCurrent?.()}>
+            <Box backgroundColor={theme.colors.card} paddingX={1}>
+              <Text color={theme.colors.accent} bold>
+                [ 📋 {isNarrow ? 'C' : (activeTab === 'errors' ? 'Copy Error' : 'Copy')} ]
+              </Text>
+            </Box>
+          </Clickable>
+          {onToggleMaximize && (
+            <>
+              <Text> </Text>
+              <Clickable onClick={() => onToggleMaximize?.()}>
+                <Box backgroundColor={theme.colors.card} paddingX={1}>
+                  <Text color={theme.colors.accent} bold>
+                    [ {isMaximized ? '🗗 Restore' : '⤢ Zoom'} ]
+                  </Text>
+                </Box>
+              </Clickable>
+            </>
+          )}
         </Box>
-      </Box>
-      
-      {/* Hairline Separator under Header Controls */}
-      <Box width="100%" height={1} overflow="hidden">
-        <Text color={theme.colors.borderSubtle}>{'─'.repeat(innerWidth)}</Text>
       </Box>
 
       {/* 2. Subheader Metadata: Distinct Boxed Badges (1 line) */}
-      <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginTop={0} marginBottom={0} flexWrap="nowrap">
+      <Box 
+        flexDirection="row" 
+        justifyContent="space-between" 
+        alignItems="center" 
+        height={1}
+        flexShrink={0}
+        overflow="hidden"
+        marginTop={0} 
+        marginBottom={0} 
+        flexWrap="nowrap"
+      >
         <Box flexDirection="row" alignItems="center" flexShrink={1}>
           {/* Command Pill */}
           <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1} flexShrink={1}>
@@ -251,7 +458,19 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
           ) : null}
         </Box>
 
-        {effectiveOffset > 0 ? (
+        {charSelection ? (
+          <Box backgroundColor="#0369A1" paddingX={1} flexShrink={0}>
+            <Text color="#FFFFFF" bold>
+              ▰ {selectedCharsCount} chars selected [c: Copy | Esc: Clear]
+            </Text>
+          </Box>
+        ) : hasRangeSelection ? (
+          <Box backgroundColor="#0369A1" paddingX={1} flexShrink={0}>
+            <Text color="#FFFFFF" bold>
+              ▰ {selectedLinesCount} lines selected ({selectedCharsCount} chars) [c: Copy | Esc: Clear]
+            </Text>
+          </Box>
+        ) : effectiveOffset > 0 ? (
           <Box backgroundColor={theme.colors.card} paddingX={1} flexShrink={0}>
             <Text color={theme.colors.warning} bold>
               ▲ (+{effectiveOffset}) [{startIdx + 1}-{endIdx}/{totalLogs}]
@@ -264,15 +483,15 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
         ) : null}
       </Box>
 
-      {/* Hairline Separator under Header Controls */}
-      <Box width="100%" height={1} overflow="hidden">
+      {/* Hairline Separator under Subheader Controls */}
+      <Box width="100%" height={1} overflow="hidden" flexShrink={0}>
         <Text color={theme.colors.borderSubtle}>{'─'.repeat(innerWidth)}</Text>
       </Box>
 
       {/* 3. Boxed Tabs Row & Hairline Separator (Hidden in ultra-compact height <= 17 rows) */}
       {!isUltraCompact && (
-        <Box flexDirection="column" marginTop={0} marginBottom={0}>
-          <Box flexDirection="row" alignItems="center" flexWrap="nowrap" marginTop={0} marginBottom={0}>
+        <Box flexDirection="column" height={2} flexShrink={0} overflow="hidden" marginTop={0} marginBottom={0}>
+          <Box flexDirection="row" alignItems="center" flexWrap="nowrap" height={1} flexShrink={0} overflow="hidden" marginTop={0} marginBottom={0}>
             {/* Logs Tab */}
             <Clickable 
               onClick={() => {
@@ -281,7 +500,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               }}
             >
               <Box 
-                backgroundColor={activeTab === 'logs' ? theme.colors.card : undefined} 
+                backgroundColor={activeTab === 'logs' ? theme.colors.card : theme.colors.surface} 
                 paddingX={1}
                 marginRight={1}
               >
@@ -299,9 +518,8 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               }}
             >
               <Box 
-                backgroundColor={activeTab === 'errors' ? theme.colors.card : undefined} 
+                backgroundColor={activeTab === 'errors' ? theme.colors.card : theme.colors.surface} 
                 paddingX={1}
-                marginRight={1}
               >
                 <Text color={activeTab === 'errors' ? theme.colors.accent : theme.colors.textMuted} bold={activeTab === 'errors'}>
                   [ Errors{' '}
@@ -315,121 +533,304 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               </Box>
             </Clickable>
 
-            {/* Metrics Tab */}
-            <Clickable 
-              onClick={() => {
-                onFocus?.();
-                onSelectTab?.('metrics');
-              }}
-            >
+            {/* Wrap Mode Toggle Button */}
+            <Clickable onClick={() => onToggleWrap?.()}>
               <Box 
-                backgroundColor={activeTab === 'metrics' ? theme.colors.card : undefined} 
+                backgroundColor={isWrapMode ? theme.colors.accentDark : theme.colors.surface} 
                 paddingX={1}
-                marginRight={1}
+                marginLeft={1}
               >
-                <Text color={activeTab === 'metrics' ? theme.colors.accent : theme.colors.textMuted} bold={activeTab === 'metrics'}>
-                  [ Metrics ]
-                </Text>
-              </Box>
-            </Clickable>
-
-            {/* Env Tab */}
-            <Clickable 
-              onClick={() => {
-                onFocus?.();
-                onSelectTab?.('env');
-              }}
-            >
-              <Box 
-                backgroundColor={activeTab === 'env' ? theme.colors.card : undefined} 
-                paddingX={1}
-              >
-                <Text color={activeTab === 'env' ? theme.colors.accent : theme.colors.textMuted} bold={activeTab === 'env'}>
-                  [ Env ]
+                <Text color={isWrapMode ? theme.colors.accent : theme.colors.textMuted} bold={isWrapMode}>
+                  [ w: {isWrapMode ? 'Wrap On' : 'Wrap Off'} ]
                 </Text>
               </Box>
             </Clickable>
           </Box>
 
           {/* Hairline Divider under Tabs */}
-          <Box width="100%" height={1} overflow="hidden">
+          <Box width="100%" height={1} overflow="hidden" flexShrink={0}>
             <Text color={theme.colors.borderSubtle}>{'─'.repeat(innerWidth)}</Text>
           </Box>
         </Box>
       )}
 
-      {/* 5. Tab Content */}
+      {/* 5. Tab Content with Line Budgeting & Strict Overflow Containment */}
       {activeTab === 'logs' && (
-        <Box flexDirection="column">
-          {visibleLogs.map((log, index) => (
-            <Box key={index} flexDirection="row" alignItems="center" flexWrap="nowrap">
-              <Box width={9} flexShrink={0}>
-                <Text color={theme.colors.textMuted}>{log.timestamp} </Text>
+        <Box 
+          height={availableLogLines} 
+          overflow="hidden" 
+          flexShrink={0} 
+          flexDirection="column"
+        >
+          {visibleLogs.map((log, index) => {
+            const lvl = (log.level || 'info').toUpperCase();
+            const lvlText = lvl === 'ERROR' ? 'ERROR' : lvl === 'WARN' ? 'WARN ' : 'INFO ';
+            const lvlColor = lvl === 'ERROR' ? theme.colors.stopped : lvl === 'WARN' ? theme.colors.warning : theme.colors.accent;
+            const isSelected = isFocused && safeSelectedIndex === index;
+            const isInRange = isFocused && index >= rangeMin && index <= rangeMax;
+            const isCursor = isSelected;
+            const isCopied = copiedLogId === log.id;
+            const jsonResult = parseJsonLog(log.message);
+            // Decouple Wrap Mode from JSON expansion: wrap mode only wraps text strings
+            const isExpanded = !!(jsonResult.isJson && expandedLogIds[log.id]);
+
+            let highlightedLines: { tokens: any[] }[] = [];
+            let jsonScrollInfo: { start: number; end: number; total: number } | null = null;
+            if (isExpanded && jsonResult.parsed && maxJsonLines > 0) {
+              const fullLines = formatJsonToHighlightedLines(jsonResult.parsed);
+              if (fullLines.length <= maxJsonLines) {
+                highlightedLines = fullLines;
+              } else {
+                const maxScroll = fullLines.length - maxJsonLines;
+                const storedOffset = jsonLineScrollById[log.id]
+                  ?? (Object.keys(jsonLineScrollById).length === 0 ? jsonLineScroll : 0);
+                const offset = Math.max(0, Math.min(maxScroll, storedOffset));
+                highlightedLines = fullLines.slice(offset, offset + maxJsonLines);
+                jsonScrollInfo = {
+                  start: offset + 1,
+                  end: Math.min(fullLines.length, offset + maxJsonLines),
+                  total: fullLines.length
+                };
+              }
+            }
+
+            return (
+              <Box
+                key={log.id || index}
+                flexDirection="column"
+                backgroundColor={hasRangeSelection && isInRange ? '#1E3A5F' : isInRange ? '#14283A' : undefined}
+                paddingX={0}
+                marginBottom={0}
+              >
+                {/* 1. Clickable Row Header: selects row & focuses panel */}
+                <Clickable
+                  id={`service-log-row-${index}`}
+                  textStartX={getLogMessageColumnOffset(
+                    log,
+                    20,
+                    isExpanded,
+                    jsonScrollInfo ? `[${jsonScrollInfo.start}-${jsonScrollInfo.end}/${jsonScrollInfo.total} lines]` : undefined
+                  )}
+                  width="100%"
+                  onClick={(ev) => {
+                    onFocus?.();
+                    onSelectLogIndex?.(index, ev?.shiftKey, log.id);
+                  }}
+                >
+                  <Box flexDirection="row" alignItems="center" flexWrap="nowrap" width="100%">
+                    {/* Visual Selector Indicator */}
+                    <Box width={2} flexShrink={0}>
+                      {isCursor ? (
+                        <Text color={theme.colors.accent} bold>▶ </Text>
+                      ) : hasRangeSelection && isInRange ? (
+                        <Text color={theme.colors.accent}>▎ </Text>
+                      ) : (
+                        <Text color={theme.colors.textDim}>  </Text>
+                      )}
+                    </Box>
+
+                    <Box width={9} flexShrink={0}>
+                      <Text color={theme.colors.textMuted}>{log.timestamp} </Text>
+                    </Box>
+
+                    <Box flexShrink={0} marginRight={1}>
+                      <Text color={theme.colors.textDim}>[</Text>
+                      <Text color={lvlColor} bold>{lvlText}</Text>
+                      <Text color={theme.colors.textDim}>] </Text>
+                    </Box>
+
+                    {/* Inline Expand Toggle for JSON (100% in-place) */}
+                    {jsonResult.isJson && (
+                      <Box flexDirection="row" alignItems="center" flexShrink={0} marginRight={1}>
+                        <Clickable
+                          onClick={() => {
+                            onFocus?.();
+                            onSelectLogIndex?.(index, false, log.id);
+                            onToggleExpandLog?.(log.id);
+                          }}
+                        >
+                          <Box flexShrink={0} backgroundColor={theme.colors.card} paddingX={1}>
+                            <Text color={theme.colors.accent} bold>
+                              {isExpanded ? '▼ JSON (collapse)' : '▶ JSON (expand)'}
+                            </Text>
+                          </Box>
+                        </Clickable>
+                        {isExpanded && jsonScrollInfo && (
+                          <Box flexDirection="row" alignItems="center" marginLeft={1}>
+                            <Clickable
+                              onClick={() => {
+                                onFocus?.();
+                                onSelectLogIndex?.(index, false, log.id);
+                                onScrollJson?.(-1, log.id);
+                              }}
+                            >
+                              <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                                <Text color={jsonScrollInfo.start > 1 ? theme.colors.accent : theme.colors.textMuted} bold>▲</Text>
+                              </Box>
+                            </Clickable>
+                            <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
+                              <Text color={theme.colors.warning} bold>
+                                [{jsonScrollInfo.start}-{jsonScrollInfo.end}/{jsonScrollInfo.total} lines]
+                              </Text>
+                            </Box>
+                            <Clickable
+                              onClick={() => {
+                                onFocus?.();
+                                onSelectLogIndex?.(index, false, log.id);
+                                onScrollJson?.(1, log.id);
+                              }}
+                            >
+                              <Box backgroundColor={theme.colors.card} paddingX={1}>
+                                <Text color={jsonScrollInfo.end < jsonScrollInfo.total ? theme.colors.accent : theme.colors.textMuted} bold>▼</Text>
+                              </Box>
+                            </Clickable>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+
+                    <Box flexGrow={1} flexShrink={1}>
+                      {renderLogMessage(log.message, jsonResult, jsonResult.isJson, isCursor, getLogDisplayText(log, maxMsgLen, isWrapMode))}
+                    </Box>
+
+                    {/* Inline Copy Confirmation Badge */}
+                    {isCopied && (
+                      <Box backgroundColor={theme.colors.runningBg} paddingX={1} flexShrink={0} marginLeft={1}>
+                        <Text color={theme.colors.running} bold>✔ COPIED</Text>
+                      </Box>
+                    )}
+                  </Box>
+                </Clickable>
+
+                {/* 2. Inline Expanded JSON View: with vertical scroll track */}
+                {isExpanded && highlightedLines.length > 0 && (
+                  <Box flexDirection="row" paddingLeft={12} marginTop={0} marginBottom={0}>
+                    <Box flexDirection="column" flexGrow={1}>
+                      {highlightedLines.map((hl, hlIdx) => (
+                        <Box key={hlIdx} flexDirection="row" height={1} overflow="hidden">
+                          {hl.tokens.map((tok, tokIdx) => (
+                            <Text
+                              key={tokIdx}
+                              color={tok.color}
+                              bold={tok.bold}
+                              dimColor={tok.dim}
+                            >
+                              {tok.text}
+                            </Text>
+                          ))}
+                        </Box>
+                      ))}
+                    </Box>
+                    {jsonScrollInfo && jsonScrollInfo.total > maxJsonLines && (
+                      <Box flexDirection="column" width={1} alignItems="center" marginLeft={1}>
+                        {highlightedLines.map((_, idx) => {
+                          const total = jsonScrollInfo.total;
+                          const start = jsonScrollInfo.start - 1;
+                          const thumbHeight = Math.max(1, Math.round((maxJsonLines / total) * maxJsonLines));
+                          const maxScroll = Math.max(1, total - maxJsonLines);
+                          const thumbPos = Math.round((start / maxScroll) * Math.max(0, maxJsonLines - thumbHeight));
+                          const isThumb = idx >= thumbPos && idx < thumbPos + thumbHeight;
+                          return (
+                            <Text key={idx} color={isThumb ? theme.colors.accent : theme.colors.borderSubtle} bold={isThumb}>
+                              {isThumb ? '█' : '│'}
+                            </Text>
+                          );
+                        })}
+                      </Box>
+                    )}
+                  </Box>
+                )}
               </Box>
-              <Box flexShrink={0} marginRight={1}>
-                <Text color={theme.colors.textDim}>[</Text>
-                <Text color={theme.colors.accent} bold>INFO </Text>
-                <Text color={theme.colors.textDim}>] </Text>
-              </Box>
-              <Box flexGrow={1} flexShrink={1}>
-                {renderLogMessage(log.message)}
-              </Box>
-            </Box>
-          ))}
+            );
+          })}
         </Box>
       )}
 
       {activeTab === 'errors' && (
-        <Box flexDirection="column">
-          {service.errorLogs && service.errorLogs.length > 0 ? (
-            service.errorLogs.slice(0, maxLogs).map((err, i) => (
-              <Box key={i} flexDirection="row" alignItems="center" flexWrap="nowrap">
-                <Box width={9} flexShrink={0}>
-                  <Text color={theme.colors.textMuted}>{err.timestamp} </Text>
-                </Box>
-                <Box flexShrink={0} marginRight={1}>
-                  <Text color={theme.colors.textDim}>[</Text>
-                  <Text color={theme.colors.stopped} bold>ERROR</Text>
-                  <Text color={theme.colors.textDim}>] </Text>
-                </Box>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text color={theme.colors.stopped}>{err.message.slice(0, maxMsgLen)}</Text>
-                </Box>
-              </Box>
-            ))
+        <Box 
+          height={availableLogLines} 
+          overflow="hidden" 
+          flexShrink={0} 
+          flexDirection="column"
+        >
+          {visibleLogs && visibleLogs.length > 0 ? (
+            visibleLogs.map((err, i) => {
+              const isSelected = isFocused && safeSelectedIndex === i;
+              const isInRange = isFocused && i >= rangeMin && i <= rangeMax;
+              const isCursor = isSelected;
+              const isCopied = copiedLogId === err.id;
+
+              return (
+                <Clickable
+                  key={err.id || i}
+                  id={`service-log-row-${i}`}
+                  textStartX={20}
+                  width="100%"
+                  onClick={(ev) => {
+                    onFocus?.();
+                    onSelectLogIndex?.(i, ev?.shiftKey, err.id);
+                  }}
+                >
+                  <Box 
+                    flexDirection="row" 
+                    alignItems="center" 
+                    flexWrap="nowrap"
+                    width="100%"
+                    backgroundColor={hasRangeSelection && isInRange ? '#1E3A5F' : isInRange ? '#14283A' : undefined}
+                  >
+                    {/* Visual Selector Indicator */}
+                    <Box width={2} flexShrink={0}>
+                      {isCursor ? (
+                        <Text color={theme.colors.stopped} bold>▶ </Text>
+                      ) : hasRangeSelection && isInRange ? (
+                        <Text color={theme.colors.stopped}>▎ </Text>
+                      ) : (
+                        <Text color={theme.colors.textDim}>  </Text>
+                      )}
+                    </Box>
+                    <Box width={9} flexShrink={0}>
+                      <Text color={theme.colors.textMuted}>{err.timestamp} </Text>
+                    </Box>
+                    <Box flexShrink={0} marginRight={1}>
+                      <Text color={theme.colors.textDim}>[</Text>
+                      <Text color={theme.colors.stopped} bold>ERROR</Text>
+                      <Text color={theme.colors.textDim}>] </Text>
+                    </Box>
+                    <Box flexGrow={1} flexShrink={1}>
+                      {charSelection && isCursor ? (
+                        (() => {
+                          const s = Math.max(0, Math.min(err.message.length, charSelection.start));
+                          const e = Math.max(s, Math.min(err.message.length, charSelection.end));
+                          const before = err.message.slice(0, s);
+                          const sel = err.message.slice(s, e);
+                          const after = err.message.slice(e);
+                          return (
+                            <Text wrap={isWrapMode ? 'wrap' : undefined}>
+                              <Text color={theme.colors.stopped}>{before}</Text>
+                              <Text backgroundColor="#0284C7" color="#FFFFFF" bold>{sel}</Text>
+                              <Text color={theme.colors.stopped}>{after}</Text>
+                            </Text>
+                          );
+                        })()
+                      ) : (
+                        <Text color={theme.colors.stopped}>{err.message.slice(0, maxMsgLen)}</Text>
+                      )}
+                    </Box>
+                    {/* Inline Copy Confirmation Badge */}
+                    {isCopied && (
+                      <Box backgroundColor={theme.colors.runningBg} paddingX={1} flexShrink={0} marginLeft={1}>
+                        <Text color={theme.colors.running} bold>✔ COPIED</Text>
+                      </Box>
+                    )}
+                  </Box>
+                </Clickable>
+              );
+            })
           ) : (
             <Box>
               <Text color={theme.colors.running}>✔ No active errors logged for {service.name}</Text>
             </Box>
           )}
-        </Box>
-      )}
-
-      {activeTab === 'metrics' && (
-        <Box flexDirection="column">
-          <Box justifyContent="space-between" width={Math.min(45, innerWidth)} flexWrap="nowrap">
-            <Text color={theme.colors.textSecondary}>CPU Utilization:</Text>
-            <Text color={theme.colors.textPrimary} bold>{service.metrics?.cpu || '12%'}</Text>
-          </Box>
-          <Box justifyContent="space-between" width={Math.min(45, innerWidth)} flexWrap="nowrap">
-            <Text color={theme.colors.textSecondary}>Memory RSS:</Text>
-            <Text color={theme.colors.textPrimary} bold>{service.metrics?.memory || '120 MB'}</Text>
-          </Box>
-          <Box justifyContent="space-between" width={Math.min(45, innerWidth)} flexWrap="nowrap">
-            <Text color={theme.colors.textSecondary}>Latency P50/P99:</Text>
-            <Text color={theme.colors.accent} bold>{service.metrics?.p50 || '18ms'}/{service.metrics?.p99 || '45ms'}</Text>
-          </Box>
-        </Box>
-      )}
-
-      {activeTab === 'env' && (
-        <Box flexDirection="column">
-          {(service.env || []).slice(0, maxLogs).map((item, i) => (
-            <Box key={i} justifyContent="space-between" width={Math.min(50, innerWidth)} flexWrap="nowrap">
-              <Text color={theme.colors.accent}>{item.key}</Text>
-              <Text color={theme.colors.textSecondary}>{item.value}</Text>
-            </Box>
-          ))}
         </Box>
       )}
     </Clickable>

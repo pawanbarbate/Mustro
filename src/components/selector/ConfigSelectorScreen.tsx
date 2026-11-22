@@ -58,11 +58,16 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Assert SGR mouse reporting mode on mount
+  // Assert SGR mouse reporting mode on mount and restore native on unmount
   useEffect(() => {
     try {
       process.stdout.write('\x1b[?1000h\x1b[?1006h');
     } catch {}
+    return () => {
+      try {
+        process.stdout.write('\x1b[?1000l\x1b[?1006l');
+      } catch {}
+    };
   }, []);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -267,12 +272,14 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
           width="100%"
           height={contentHeight}
           paddingTop={1}
+          backgroundColor={theme.colors.canvas}
         >
           <Box
             flexDirection="column"
             width={containerWidth}
             borderStyle="round"
             borderColor={theme.colors.borderDefault}
+            borderBackgroundColor={theme.colors.canvas}
             backgroundColor={theme.colors.surface}
             paddingX={2}
             paddingY={0}
@@ -309,7 +316,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
               )}
 
               {Array.from({ length: Math.ceil(visibleConfigs.length / columns) }, (_, row) => (
-                <Box key={`config-row-${row}`} flexDirection="row" width="100%">
+                <Box key={`config-row-${row}`} flexDirection="row" width="100%" backgroundColor={theme.colors.surface}>
                   {visibleConfigs.slice(row * columns, (row + 1) * columns).map((cfg, column) => {
                 const idx = windowStart + row * columns + column;
                 const isSelected = selectedIndex === idx;
@@ -322,6 +329,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
                     id={`config-card-${idx}`}
                     width={`${100 / columns}%`}
                     paddingRight={columns === 2 && column === 0 ? 1 : 0}
+                    backgroundColor={theme.colors.surface}
                     onClick={() => {
                       updateSelection(idx);
                       onSelect(cfg.path);
@@ -332,6 +340,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
                       flexDirection="column"
                       borderStyle="round"
                       borderColor={isSelected ? theme.colors.borderFocus : theme.colors.borderSubtle}
+                      borderBackgroundColor={theme.colors.surface}
                       backgroundColor={isSelected ? theme.colors.cardSelected : theme.colors.card}
                       paddingX={1}
                       paddingY={0}
@@ -434,7 +443,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
                 </Box>
               </Clickable>
 
-              <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginTop={1}>
+              <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginTop={1} backgroundColor={theme.colors.surface}>
                 <Clickable id="action-new-wizard" onClick={onNewConfig}>
                   <Text color={theme.colors.textPrimary} bold>[+] New Profile (w)</Text>
                 </Clickable>
