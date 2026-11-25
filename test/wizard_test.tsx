@@ -27,7 +27,7 @@ const lines120x36 = output120x36.split('\n');
 console.log(`Total lines rendered: ${lines120x36.length}`);
 
 // Verify presence of signature elements
-const hasBranding = output80x24.includes('DevPulse');
+const hasBranding = output80x24.includes('MUSTRO');
 const hasRegistry = output80x24.includes('REGISTRY');
 const hasForm = output80x24.includes('EDIT') || output80x24.includes('NEW SERVICE');
 const hasAddBtn = output80x24.includes('+ Add');

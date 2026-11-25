@@ -1,5 +1,5 @@
 /**
- * DevPulse Design System: "Midnight Slate"
+ * MUSTRO Design System: "Midnight Slate"
  * Modern, high-contrast, professional developer terminal UI tokens
  */
 

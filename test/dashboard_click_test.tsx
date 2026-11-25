@@ -58,7 +58,7 @@ async function runDashboardClickTests() {
   stdin.write('\x1b[<0;3;30M');
   await new Promise(r => setTimeout(r, 100));
 
-  assert(captured.includes('Shortcuts') || captured.includes('Help') || captured.includes('DevPulse'), 'Output should contain help or DevPulse content');
+  assert(captured.includes('Shortcuts') || captured.includes('Help') || captured.includes('MUSTRO'), 'Output should contain help or MUSTRO content');
 
   // Close help
   stdin.write('\x1b');

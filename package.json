@@ -1,11 +1,11 @@
 {
-  "name": "devpulse",
+  "name": "mustro",
   "version": "1.0.0",
-  "description": "Interactive TUI dashboard and process orchestrator for microservices and fullstack development",
+  "description": "MUSTRO is a calm, powerful terminal workspace that brings every microservice, log, and process together—giving developers one beautiful place to build, observe, and orchestrate full-stack systems.",
   "main": "dist/cli.js",
   "type": "module",
   "bin": {
-    "devpulse": "./dist/cli.js"
+    "mustro": "./dist/cli.js"
   },
   "files": [
     "dist"

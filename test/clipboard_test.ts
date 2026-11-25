@@ -84,7 +84,7 @@ async function runClipboardTests() {
   };
 
   const summary = formatServiceErrorSummary(sampleService);
-  assert.ok(summary.includes('=== DevPulse Service Report: payment-svc ==='), 'Summary contains title');
+  assert.ok(summary.includes('=== MUSTRO Service Report: payment-svc ==='), 'Summary contains title');
   assert.ok(summary.includes('Status: STOPPED (CRASHED (Exit 1))'), 'Summary contains status');
   assert.ok(summary.includes('Port: :4002'), 'Summary contains port');
   assert.ok(summary.includes('PID: 8712'), 'Summary contains PID');

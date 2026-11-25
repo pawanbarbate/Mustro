@@ -72,7 +72,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
   const viewport = useTerminalViewport(propWidth, propHeight);
   const clickManagerRef = useRef<ClickManagerContextValue | null>(null);
   const workspaceName = path.basename(process.cwd()) || 'Workspace';
-  const activeConfigFilename = configFilePath ? path.basename(configFilePath) : 'config.devpulse.json';
+  const activeConfigFilename = configFilePath ? path.basename(configFilePath) : 'config.mustro.json';
 
   // Assert clean SGR mouse reporting mode on mount and restore native on unmount
   useEffect(() => {
@@ -260,7 +260,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
     setActivePanel('services');
   }, [name, pathValue, command, port, autoStart, dependsOnStr, preStartStr, isEditingNew, selectedIndex, services.length]);
 
-  // Save devpulse.config.json and launch DevPulse dashboard
+  // Save mustro.config.json and launch the MUSTRO dashboard
   const handleSaveAndLaunch = useCallback(() => {
     if (services.length === 0) {
       setError('Please add at least one service before launching');
@@ -269,7 +269,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
     }
 
     const config: DevPulseConfig = {
-      $schema: 'https://devpulse.dev/schema.json',
+      $schema: 'https://mustro.dev/schema.json',
       name: path.basename(process.cwd()) || 'Workspace',
       version: '1.0.0',
       services
@@ -592,7 +592,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
             )}
           </Box>
         ) : (
-          /* Standard 2-Column Responsive Setup View matching DevPulse synergy */
+          /* Standard 2-Column Responsive Setup View */
           <Box flexDirection="row" width={viewport.width} backgroundColor={theme.colors.canvas}>
             {/* Left Column: Service Registry & Multiplier Actions */}
             <Box flexDirection="column" width={leftPanelWidth} marginRight={1} backgroundColor={theme.colors.canvas}>

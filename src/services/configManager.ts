@@ -4,12 +4,15 @@ import { DevPulseConfig, ServiceConfig } from '../types/config.js';
 import { logger } from '../logger/logger.js';
 
 export const CONFIG_FILENAMES = [
+  'config.mustro.json',
+  'mustro.config.json',
+  'mustro.json',
+  '.mustrorc.json',
+  '.mustrorc',
+  '.mustro.json',
   'config.devpulse.json',
   'devpulse.config.json',
-  'devpulse.json',
-  '.devpulserc.json',
-  '.devpulserc',
-  '.devpulse.json'
+  'devpulse.json'
 ];
 
 export interface CliArgs {
@@ -29,7 +32,7 @@ export interface ConfigFileSummary {
 
 /**
  * Parse command line arguments for configuration path flags:
- * -c <path>, --config <path>, --config=<path>, or positional <file>.json / <file>.devpulse.json
+ * -c <path>, --config <path>, --config=<path>, or positional <file>.json / <file>.mustro.json
  */
 export function parseCliArgs(argv: string[] = process.argv.slice(2)): CliArgs {
   let configPath: string | undefined;
@@ -45,7 +48,7 @@ export function parseCliArgs(argv: string[] = process.argv.slice(2)): CliArgs {
       }
     } else if (arg.startsWith('--config=')) {
       configPath = arg.slice('--config='.length);
-    } else if (!arg.startsWith('-') && (arg.endsWith('.json') || arg.includes('devpulse'))) {
+    } else if (!arg.startsWith('-') && (arg.endsWith('.json') || arg.includes('mustro') || arg.includes('devpulse'))) {
       configPath = arg;
     }
   }
@@ -54,8 +57,8 @@ export function parseCliArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 }
 
 /**
- * Find all available DevPulse configuration files in the directory.
- * Matches priority static filenames and any `*.devpulse.json` files.
+ * Find all available MUSTRO configuration files in the directory.
+ * Matches priority static filenames and any `*.mustro.json` files.
  */
 export function findAllConfigFiles(cwd: string = process.cwd()): string[] {
   const found = new Set<string>();
@@ -72,13 +75,15 @@ export function findAllConfigFiles(cwd: string = process.cwd()): string[] {
     }
   }
 
-  // 2. Dynamic pattern matching: scan cwd for any `*.devpulse.json` file
+  // 2. Dynamic pattern matching: scan cwd for any `*.mustro.json` file (legacy `.devpulse.json` remains supported)
   try {
     if (fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()) {
       const entries = fs.readdirSync(cwd);
       const dynamicMatches = entries
-        .filter(entry => /^.+\.devpulse\.json$/i.test(entry))
+        .filter(entry => /^.+\.(mustro|devpulse)\.json$/i.test(entry))
         .sort((a, b) => {
+          if (a.toLowerCase() === 'config.mustro.json') return -1;
+          if (b.toLowerCase() === 'config.mustro.json') return 1;
           if (a.toLowerCase() === 'config.devpulse.json') return -1;
           if (b.toLowerCase() === 'config.devpulse.json') return 1;
           return a.localeCompare(b);
@@ -110,7 +115,7 @@ export function getConfigFileSummaries(cwd: string = process.cwd()): ConfigFileS
         return {
           path: filePath,
           filename,
-          name: parsed.name || filename.replace(/\.devpulse\.json$/i, ''),
+          name: parsed.name || filename.replace(/\.(mustro|devpulse)\.json$/i, ''),
           version: parsed.version,
           servicesCount: parsed.services.length,
           services: parsed.services.map(s => ({
@@ -172,7 +177,7 @@ export async function getConfigFileSummariesAsync(
         summaries.push({
           path: filePath,
           filename,
-          name: parsed.name || filename.replace(/\.devpulse\.json$/i, ''),
+          name: parsed.name || filename.replace(/\.(mustro|devpulse)\.json$/i, ''),
           version: parsed.version,
           servicesCount: parsed.services.length,
           services: parsed.services.map(s => ({
@@ -273,7 +278,7 @@ export function resolveInitialAppState(
 }
 
 /**
- * Check if a DevPulse configuration file exists in the directory or at the given path.
+ * Check if a MUSTRO configuration file exists in the directory or at the given path.
  */
 export function hasConfigFile(cwdOrPath: string = process.cwd()): boolean {
   return getConfigFilePath(cwdOrPath) !== null;
@@ -281,7 +286,7 @@ export function hasConfigFile(cwdOrPath: string = process.cwd()): boolean {
 
 /**
  * Locate the path to an existing config file in the directory or verify direct file path.
- * Supports standard names as well as any dynamic `(anyname).devpulse.json` pattern.
+ * Supports standard names as well as dynamic `(anyname).mustro.json` patterns.
  */
 export function getConfigFilePath(cwdOrPath: string = process.cwd()): string | null {
   // If target path is directly an existing file, resolve and return it
@@ -305,13 +310,15 @@ export function getConfigFilePath(cwdOrPath: string = process.cwd()): string | n
     }
   }
 
-  // 2. Dynamic pattern matching: scan cwd for any `*.devpulse.json` file
+  // 2. Dynamic pattern matching: scan cwd for any `*.mustro.json` file
   try {
     if (fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()) {
       const entries = fs.readdirSync(cwd);
       const dynamicMatches = entries
-        .filter(entry => /^.+\.devpulse\.json$/i.test(entry))
+        .filter(entry => /^.+\.(mustro|devpulse)\.json$/i.test(entry))
         .sort((a, b) => {
+          if (a.toLowerCase() === 'config.mustro.json') return -1;
+          if (b.toLowerCase() === 'config.mustro.json') return 1;
           if (a.toLowerCase() === 'config.devpulse.json') return -1;
           if (b.toLowerCase() === 'config.devpulse.json') return 1;
           return a.localeCompare(b);
@@ -330,7 +337,7 @@ export function getConfigFilePath(cwdOrPath: string = process.cwd()): string | n
 }
 
 /**
- * Load and parse the DevPulse config file from a directory or specific path.
+ * Load and parse the MUSTRO config file from a directory or specific path.
  */
 export function loadConfigFile(cwdOrPath: string = process.cwd()): DevPulseConfig | null {
   const filePath = getConfigFilePath(cwdOrPath);
@@ -350,7 +357,7 @@ export function loadConfigFile(cwdOrPath: string = process.cwd()): DevPulseConfi
 }
 
 /**
- * Save configuration to devpulse.config.json or the active configuration file in the directory.
+ * Save configuration to mustro.config.json or the active configuration file in the directory.
  */
 export function saveConfigFile(
   config: DevPulseConfig,
@@ -359,9 +366,9 @@ export function saveConfigFile(
 ): string {
   const targetPath = customFilePath
     ? (path.isAbsolute(customFilePath) ? customFilePath : path.resolve(cwd, customFilePath))
-    : (getConfigFilePath(cwd) || path.resolve(cwd, 'config.devpulse.json'));
+    : (getConfigFilePath(cwd) || path.resolve(cwd, 'config.mustro.json'));
   const payload: DevPulseConfig = {
-    $schema: 'https://devpulse.dev/schema.json',
+    $schema: 'https://mustro.dev/schema.json',
     name: config.name || path.basename(cwd) || 'Workspace',
     version: config.version || '1.0.0',
     services: config.services,

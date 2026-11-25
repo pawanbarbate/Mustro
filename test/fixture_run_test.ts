@@ -17,7 +17,7 @@ if (initialCheck) {
   if (fs.existsSync(cfgPath)) fs.unlinkSync(cfgPath);
 }
 
-// 2. Run auto-detection as if DevPulse started in that directory
+// 2. Run auto-detection as if MUSTRO started in that directory
 const detected = autoDetectServices(fixtureDir);
 console.log('[STEP 2] Detected services count:', detected.length);
 detected.forEach(d => {

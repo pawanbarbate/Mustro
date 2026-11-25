@@ -44,7 +44,7 @@ const loadingOutput = await captureRender(
   })
 );
 
-assert(loadingOutput.includes('DevPulse'), 'LoadingScreen must contain DevPulse branding');
+assert(loadingOutput.includes('MUSTRO'), 'LoadingScreen must contain MUSTRO branding');
 assert(loadingOutput.includes('68%'), 'LoadingScreen must display current progress percentage');
 assert(loadingOutput.includes('Scanning workspace microservices...'), 'LoadingScreen must display status message');
 

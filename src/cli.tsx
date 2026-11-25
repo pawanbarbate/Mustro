@@ -21,20 +21,21 @@ import { processManager } from './services/processManager.js';
 import { DevPulseConfig } from './types/config.js';
 import { theme } from './theme/theme.js';
 import { logger } from './logger/logger.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 // 0. Handle CLI Help & Version flags before any terminal buffer initialization
 const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
   console.log(`
-DevPulse - Modern Terminal Workspace Orchestrator for Multi-Service Apps
+MUSTRO - Modern Terminal Workspace Orchestrator for Multi-Service Apps
 
 Usage:
-  devpulse [options] [config-file]
+  mustro [options] [config-file]
 
 Options:
-  -c, --config <file>   Specify a custom DevPulse config file
+  -c, --config <file>   Specify a custom MUSTRO config file
   -h, --help            Show this help message
-  -v, --version         Show DevPulse version
+  -v, --version         Show MUSTRO version
 
 Controls:
   ↑/↓ or j/k            Navigate services
@@ -45,18 +46,18 @@ Controls:
   /                     Search logs
   f                     Cycle service filter
   Space / l             Toggle live streaming
-  q / Ctrl+C            Exit DevPulse
+  q / Ctrl+C            Exit MUSTRO
 `);
   process.exit(0);
 }
 
 if (args.includes('-v') || args.includes('--version')) {
-  console.log('devpulse v1.0.0');
+  console.log(packageJson.version);
   process.exit(0);
 }
 
 if (!process.stdout.isTTY) {
-  console.error('Error: DevPulse requires an interactive TTY terminal to run.');
+  console.error('Error: MUSTRO requires an interactive TTY terminal to run.');
   process.exit(1);
 }
 

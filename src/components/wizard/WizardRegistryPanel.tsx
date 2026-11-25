@@ -46,7 +46,7 @@ export const WizardRegistryPanel: React.FC<WizardRegistryPanelProps> = React.mem
   isUltraNarrow = false,
   presets = [],
   workspaceName = 'Workspace',
-  configFilename = 'config.devpulse.json',
+  configFilename = 'config.mustro.json',
   onSelectService,
   onAddService,
   onRemoveService,

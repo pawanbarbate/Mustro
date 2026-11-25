@@ -24,7 +24,7 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
     >
       {/* Title */}
       <Box justifyContent="center" marginBottom={1}>
-        <Text color={theme.colors.accent} bold>DevPulse — Keyboard Shortcuts & Controls</Text>
+        <Text color={theme.colors.accent} bold>MUSTRO — Keyboard Shortcuts & Controls</Text>
       </Box>
 
       {/* Shortcuts List */}
@@ -99,7 +99,7 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
         </Box>
         <Box justifyContent="space-between">
           <Text color={theme.colors.textSecondary} bold>q  /  Ctrl+C</Text>
-          <Text color={theme.colors.textSecondary}>Exit DevPulse TUI</Text>
+          <Text color={theme.colors.textSecondary}>Exit MUSTRO TUI</Text>
         </Box>
       </Box>
 

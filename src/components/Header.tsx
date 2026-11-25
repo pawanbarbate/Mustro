@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = React.memo(({
       {/* Left branding */}
       <Box flexDirection="row" alignItems="center" flexShrink={0}>
         <Text color={theme.colors.accent} bold>~^v~ </Text>
-        <Text color={theme.colors.textPrimary} bold>DevPulse</Text>
+        <Text color={theme.colors.textPrimary} bold>MUSTRO</Text>
         {!isNarrow && !toastMessage && (
           <Text color={theme.colors.textMuted}>  │  Local Development Workspace</Text>
         )}

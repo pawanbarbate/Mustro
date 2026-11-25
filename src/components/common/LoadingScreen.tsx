@@ -44,7 +44,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = React.memo(({
         <Box flexDirection="row" alignItems="center" justifyContent="space-between" marginBottom={1}>
           <Box flexDirection="row" alignItems="center">
             <Text color={theme.colors.accent} bold>~^v~ </Text>
-            <Text color={theme.colors.textPrimary} bold>DevPulse</Text>
+            <Text color={theme.colors.textPrimary} bold>MUSTRO</Text>
           </Box>
           <Text color={theme.colors.accent} bold>{spinner}</Text>
         </Box>
