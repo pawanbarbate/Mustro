@@ -210,6 +210,16 @@ export function useTerminalInput({
         if (baseButton === 0 && isPress) {
           // Check if clicking on a log row to initialize drag tracking
           let rowRegion = clickManagerRef?.current?.findRegionAt(mouseX, mouseY);
+          const jsonLineRegion = clickManagerRef?.current?.findRowRegionAt?.(mouseY, 'service-json-line-') ||
+            clickManagerRef?.current?.findRowRegionAt?.(mouseY, 'global-json-line-') || null;
+          if (jsonLineRegion) {
+            const hitArea = rowRegion
+              ? (rowRegion.maxX - rowRegion.minX + 1) * (rowRegion.maxY - rowRegion.minY + 1)
+              : Infinity;
+            const jsonLineArea = (jsonLineRegion.maxX - jsonLineRegion.minX + 1) *
+              (jsonLineRegion.maxY - jsonLineRegion.minY + 1);
+            if (hitArea > jsonLineArea) rowRegion = jsonLineRegion;
+          }
           if (!rowRegion) {
             rowRegion = clickManagerRef?.current?.findRowRegionAt?.(mouseY, 'service-log-row') ||
                         clickManagerRef?.current?.findRowRegionAt?.(mouseY, 'global-log-row') || null;
@@ -296,7 +306,19 @@ export function useTerminalInput({
         if ((baseButton === 32 || isMotion) && isPress) {
           const jsonDrag = jsonDragStartRef.current;
           if (jsonDrag) {
-            const curRegion = clickManagerRef?.current?.findRegionAt(mouseX, mouseY);
+            let curRegion = clickManagerRef?.current?.findRegionAt(mouseX, mouseY);
+            const jsonLineRegion = clickManagerRef?.current?.findRowRegionAt?.(
+              mouseY,
+              `${jsonDrag.panel}-json-line-`
+            ) || null;
+            if (jsonLineRegion) {
+              const hitArea = curRegion
+                ? (curRegion.maxX - curRegion.minX + 1) * (curRegion.maxY - curRegion.minY + 1)
+                : Infinity;
+              const jsonLineArea = (jsonLineRegion.maxX - jsonLineRegion.minX + 1) *
+                (jsonLineRegion.maxY - jsonLineRegion.minY + 1);
+              if (hitArea > jsonLineArea) curRegion = jsonLineRegion;
+            }
             const lineMatch = curRegion?.id.match(/^(service|global)-json-line-(\d+)-(\d+)$/);
             if (lineMatch && lineMatch[1] === jsonDrag.panel) {
               const rowIdx = parseInt(lineMatch[2]!, 10);
