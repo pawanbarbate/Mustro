@@ -68,7 +68,7 @@ fs.mkdirSync(tempFixtureDir, { recursive: true });
 
 try {
   fs.writeFileSync(
-    path.join(tempFixtureDir, 'config.devpulse.json'),
+    path.join(tempFixtureDir, 'config.mustro.json'),
     JSON.stringify({
       name: 'Primary Config',
       version: '1.0.0',
@@ -80,7 +80,7 @@ try {
   );
 
   fs.writeFileSync(
-    path.join(tempFixtureDir, 'prod.devpulse.json'),
+    path.join(tempFixtureDir, 'prod.mustro.json'),
     JSON.stringify({
       name: 'Production Config',
       version: '1.0.0',
@@ -91,7 +91,7 @@ try {
   );
 
   fs.writeFileSync(
-    path.join(tempFixtureDir, 'staging.devpulse.json'),
+    path.join(tempFixtureDir, 'staging.mustro.json'),
     JSON.stringify({
       name: 'Staging Config',
       version: '1.0.0',
@@ -153,7 +153,7 @@ assert.strictEqual(stateC.mode, 'wizard', 'Non-existent explicit config path mus
 assert.strictEqual(stateC.config, null);
 
 // Case D: Empty directory with zero configs -> mode 'welcome'
-const emptyDir = path.join(process.cwd(), '.empty-test-dir-for-devpulse');
+const emptyDir = path.join(process.cwd(), '.empty-test-dir-for-mustro');
 try {
   if (!fs.existsSync(emptyDir)) fs.mkdirSync(emptyDir, { recursive: true });
   const stateD = resolveInitialAppState({ configPath: null }, emptyDir);

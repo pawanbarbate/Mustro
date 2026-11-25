@@ -8,9 +8,9 @@ import {
   parseCliArgs,
   CONFIG_FILENAMES
 } from '../src/services/configManager.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import { MustroConfig } from '../src/types/config.js';
 
-console.log('--- STARTING CONFIG.DEVPULSE.JSON & DYNAMIC LOADER TESTS ---');
+console.log('--- STARTING MUSTRO CONFIGURATION LOADER TESTS ---');
 
 const tmpTestDir = path.resolve(process.cwd(), 'test/fixtures/config-loader-sandbox');
 if (!fs.existsSync(tmpTestDir)) {
@@ -42,11 +42,11 @@ try {
   console.log('✔ Empty directory returns null');
 
   // -------------------------------------------------------------
-  // Test 2: Auto-detect config.devpulse.json
+  // Test 2: Auto-detect config.mustro.json
   // -------------------------------------------------------------
-  console.log('[TEST 2] Verifying auto-detection of config.devpulse.json...');
-  const sampleConfig: DevPulseConfig = {
-    $schema: 'https://devpulse.dev/schema.json',
+  console.log('[TEST 2] Verifying auto-detection of config.mustro.json...');
+  const sampleConfig: MustroConfig = {
+    $schema: 'https://mustro.dev/schema.json',
     name: 'test-workspace',
     version: '1.0.0',
     services: [
@@ -55,11 +55,11 @@ try {
     ]
   };
 
-  const configPath1 = path.join(tmpTestDir, 'config.devpulse.json');
+  const configPath1 = path.join(tmpTestDir, 'config.mustro.json');
   fs.writeFileSync(configPath1, JSON.stringify(sampleConfig, null, 2), 'utf-8');
 
   if (!hasConfigFile(tmpTestDir)) {
-    throw new Error('Expected hasConfigFile to be true when config.devpulse.json exists');
+    throw new Error('Expected hasConfigFile to be true when config.mustro.json exists');
   }
   const detectedPath1 = getConfigFilePath(tmpTestDir);
   if (detectedPath1 !== configPath1) {
@@ -68,24 +68,24 @@ try {
 
   const loadedConfig1 = loadConfigFile(tmpTestDir);
   if (!loadedConfig1 || loadedConfig1.services.length !== 2) {
-    throw new Error('Failed to load config.devpulse.json properly');
+    throw new Error('Failed to load config.mustro.json properly');
   }
   if (loadedConfig1.services[0]?.name !== 'web' || loadedConfig1.services[1]?.port !== 8080) {
     throw new Error('Loaded service configuration does not match expected values');
   }
-  console.log('✔ config.devpulse.json is detected and loaded perfectly');
+  console.log('✔ config.mustro.json is detected and loaded perfectly');
 
   // -------------------------------------------------------------
-  // Test 3: Auto-detect (anyname).devpulse.json (e.g. backend.devpulse.json)
+  // Test 3: Auto-detect (anyname).mustro.json (e.g. backend.mustro.json)
   // -------------------------------------------------------------
-  console.log('[TEST 3] Verifying auto-detection of (anyname).devpulse.json pattern...');
+  console.log('[TEST 3] Verifying auto-detection of (anyname).mustro.json pattern...');
   cleanupSandbox();
 
-  const customNamedPath = path.join(tmpTestDir, 'my-microservices.devpulse.json');
+  const customNamedPath = path.join(tmpTestDir, 'my-microservices.mustro.json');
   fs.writeFileSync(customNamedPath, JSON.stringify(sampleConfig, null, 2), 'utf-8');
 
   if (!hasConfigFile(tmpTestDir)) {
-    throw new Error('Expected hasConfigFile to find my-microservices.devpulse.json');
+    throw new Error('Expected hasConfigFile to find my-microservices.mustro.json');
   }
   const detectedDynamic = getConfigFilePath(tmpTestDir);
   if (detectedDynamic !== customNamedPath) {
@@ -93,27 +93,27 @@ try {
   }
   const loadedDynamic = loadConfigFile(tmpTestDir);
   if (!loadedDynamic || loadedDynamic.services.length !== 2) {
-    throw new Error('Failed to load my-microservices.devpulse.json');
+    throw new Error('Failed to load my-microservices.mustro.json');
   }
-  console.log('✔ Any custom file ending with .devpulse.json is automatically recognized');
+  console.log('✔ Any custom file ending with .mustro.json is automatically recognized');
 
   // -------------------------------------------------------------
-  // Test 4: Priority resolution when both config.devpulse.json and others exist
+  // Test 4: Priority resolution when both config.mustro.json and others exist
   // -------------------------------------------------------------
-  console.log('[TEST 4] Verifying priority resolution (config.devpulse.json takes priority)...');
-  const otherPath = path.join(tmpTestDir, 'other.devpulse.json');
+  console.log('[TEST 4] Verifying priority resolution (config.mustro.json takes priority)...');
+  const otherPath = path.join(tmpTestDir, 'other.mustro.json');
   fs.writeFileSync(otherPath, JSON.stringify(sampleConfig, null, 2), 'utf-8');
   fs.writeFileSync(configPath1, JSON.stringify({ ...sampleConfig, name: 'priority-test' }, null, 2), 'utf-8');
 
   const resolvedPriority = getConfigFilePath(tmpTestDir);
   if (resolvedPriority !== configPath1) {
-    throw new Error(`Expected config.devpulse.json to have priority over other.devpulse.json, got: ${resolvedPriority}`);
+    throw new Error(`Expected config.mustro.json to have priority over other.mustro.json, got: ${resolvedPriority}`);
   }
   const loadedPriority = loadConfigFile(tmpTestDir);
   if (loadedPriority?.name !== 'priority-test') {
     throw new Error('Loaded incorrect config during priority test');
   }
-  console.log('✔ config.devpulse.json successfully takes priority when multiple devpulse files exist');
+  console.log('✔ config.mustro.json successfully takes priority when multiple mustro files exist');
 
   // -------------------------------------------------------------
   // Test 5: Direct file path loading
@@ -130,26 +130,26 @@ try {
   // -------------------------------------------------------------
   console.log('[TEST 6] Verifying CLI argument parser...');
   // Case A: --config
-  const argsA = parseCliArgs(['--config', './test.devpulse.json']);
-  if (argsA.configPath !== './test.devpulse.json') {
+  const argsA = parseCliArgs(['--config', './test.mustro.json']);
+  if (argsA.configPath !== './test.mustro.json') {
     throw new Error(`CLI --config parsing failed: ${argsA.configPath}`);
   }
 
   // Case B: -c
-  const argsB = parseCliArgs(['-c', 'custom.devpulse.json']);
-  if (argsB.configPath !== 'custom.devpulse.json') {
+  const argsB = parseCliArgs(['-c', 'custom.mustro.json']);
+  if (argsB.configPath !== 'custom.mustro.json') {
     throw new Error(`CLI -c parsing failed: ${argsB.configPath}`);
   }
 
   // Case C: --config=value
-  const argsC = parseCliArgs(['--config=config.devpulse.json']);
-  if (argsC.configPath !== 'config.devpulse.json') {
+  const argsC = parseCliArgs(['--config=config.mustro.json']);
+  if (argsC.configPath !== 'config.mustro.json') {
     throw new Error(`CLI --config= parsing failed: ${argsC.configPath}`);
   }
 
-  // Case D: Positional devpulse file
-  const argsD = parseCliArgs(['production.devpulse.json']);
-  if (argsD.configPath !== 'production.devpulse.json') {
+  // Case D: Positional mustro file
+  const argsD = parseCliArgs(['production.mustro.json']);
+  if (argsD.configPath !== 'production.mustro.json') {
     throw new Error(`CLI positional parsing failed: ${argsD.configPath}`);
   }
 
@@ -161,16 +161,36 @@ try {
   console.log('✔ All CLI argument variations (-c, --config, --config=..., positional) parse correctly');
 
   // -------------------------------------------------------------
-  // Test 7: saveConfigFile preserves detected file path
+  // Test 7: Reject legacy DevPulse config filenames
   // -------------------------------------------------------------
-  console.log('[TEST 7] Verifying saveConfigFile preserves the existing config file...');
+  console.log('[TEST 7] Verifying legacy DevPulse filenames are rejected...');
   cleanupSandbox();
 
-  const activeTestFile = path.join(tmpTestDir, 'staging.devpulse.json');
+  const legacyConfigPath = path.join(tmpTestDir, 'legacy.devpulse.json');
+  fs.writeFileSync(legacyConfigPath, JSON.stringify(sampleConfig, null, 2), 'utf-8');
+
+  if (hasConfigFile(tmpTestDir) || getConfigFilePath(tmpTestDir) !== null) {
+    throw new Error('Legacy .devpulse.json files must not be discovered');
+  }
+  if (hasConfigFile(legacyConfigPath) || loadConfigFile(legacyConfigPath) !== null) {
+    throw new Error('Legacy .devpulse.json files must not be directly loaded');
+  }
+  if (parseCliArgs([legacyConfigPath]).configPath !== legacyConfigPath) {
+    throw new Error('Legacy config path should be parsed so the CLI can report it as unsupported');
+  }
+  console.log('✔ Legacy .devpulse.json files are rejected');
+
+  // -------------------------------------------------------------
+  // Test 8: saveConfigFile preserves detected file path
+  // -------------------------------------------------------------
+  console.log('[TEST 8] Verifying saveConfigFile preserves the existing config file...');
+  cleanupSandbox();
+
+  const activeTestFile = path.join(tmpTestDir, 'staging.mustro.json');
   fs.writeFileSync(activeTestFile, JSON.stringify(sampleConfig, null, 2), 'utf-8');
 
   // Update a service in config
-  const updatedConfig: DevPulseConfig = {
+  const updatedConfig: MustroConfig = {
     ...sampleConfig,
     services: [
       ...sampleConfig.services,
@@ -183,13 +203,13 @@ try {
     throw new Error(`Expected saveConfigFile to write to ${activeTestFile}, got: ${savedTarget}`);
   }
 
-  const reloaded = JSON.parse(fs.readFileSync(activeTestFile, 'utf-8')) as DevPulseConfig;
+  const reloaded = JSON.parse(fs.readFileSync(activeTestFile, 'utf-8')) as MustroConfig;
   if (reloaded.services.length !== 3) {
     throw new Error(`Expected 3 services in saved config, got ${reloaded.services.length}`);
   }
-  console.log('✔ saveConfigFile preserves and writes back to staging.devpulse.json');
+  console.log('✔ saveConfigFile preserves and writes back to staging.mustro.json');
 
-  console.log('\n✅ ALL CONFIG.DEVPULSE.JSON & DYNAMIC LOADER TESTS PASSED PERFECTLY!\n');
+  console.log('\n✅ ALL MUSTRO CONFIGURATION LOADER TESTS PASSED!\n');
 } finally {
   cleanupSandbox();
   if (fs.existsSync(tmpTestDir)) {

@@ -423,9 +423,9 @@ export const GlobalLogsPanel: React.FC<GlobalLogsPanelProps> = React.memo(({
                 flexShrink={0}
               >
                 <Text color={isMaximized ? theme.colors.accent : theme.colors.textSecondary} bold={isMaximized}>
-                  {panelWidth < 68 
-                    ? (isMaximized ? '[ 🗗 ]' : '[ ⤢ ]') 
-                    : (isMaximized ? '[ 🗗 Restore ]' : '[ ⤢ Zoom ]')}
+                  {panelWidth < 68
+                    ? (isMaximized ? '[ R ]' : '[ Z ]')
+                    : (isMaximized ? '[ Restore ]' : '[ Zoom ]')}
                 </Text>
               </Box>
             </Clickable>

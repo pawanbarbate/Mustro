@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import path from 'path';
 import { Box, Text, useInput } from 'ink';
-import { DevPulseConfig, ServiceConfig } from '../../types/config.js';
+import { MustroConfig, ServiceConfig } from '../../types/config.js';
 import { autoDetectServices, saveConfigFile } from '../../services/configManager.js';
 import { useTerminalViewport } from '../../hooks/useTerminalViewport.js';
 import Header from '../Header.js';
@@ -13,7 +13,7 @@ import { theme } from '../../theme/theme.js';
 import { logger } from '../../logger/logger.js';
 
 export interface SetupWizardProps {
-  onComplete: (config: DevPulseConfig) => void;
+  onComplete: (config: MustroConfig) => void;
   onCancel?: () => void;
   width?: number;
   height?: number;
@@ -268,7 +268,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
       return;
     }
 
-    const config: DevPulseConfig = {
+    const config: MustroConfig = {
       $schema: 'https://mustro.dev/schema.json',
       name: path.basename(process.cwd()) || 'Workspace',
       version: '1.0.0',

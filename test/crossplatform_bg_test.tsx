@@ -82,9 +82,9 @@ console.log('✔ ServicesPanel has 0 border reset leaks and explicit card backgr
 console.log('[3] Verifying ConfigSelectorScreen border & modal background styling...');
 const configs = [
   {
-    path: '/var/www/html/node-terminal/config.devpulse.json',
-    filename: 'config.devpulse.json',
-    name: 'config.devpulse.json',
+    path: '/var/www/html/node-terminal/config.mustro.json',
+    filename: 'config.mustro.json',
+    name: 'config.mustro.json',
     servicesCount: 4,
     isValid: true,
     services: [
@@ -93,9 +93,9 @@ const configs = [
     ]
   },
   {
-    path: '/var/www/html/node-terminal/staging.devpulse.json',
-    filename: 'staging.devpulse.json',
-    name: 'staging.devpulse.json',
+    path: '/var/www/html/node-terminal/staging.mustro.json',
+    filename: 'staging.mustro.json',
+    name: 'staging.mustro.json',
     servicesCount: 2,
     isValid: true,
     services: []

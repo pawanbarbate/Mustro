@@ -108,9 +108,9 @@ async function runClipboardTests() {
 
   // Test 6: copyToClipboard & copyToClipboardDetailed executes without throwing
   console.log('\n[Test 6] Testing copyToClipboard execution...');
-  const copyResult = await copyToClipboard('DevPulse copy test string');
+  const copyResult = await copyToClipboard('Mustro copy test string');
   assert.ok(typeof copyResult === 'boolean', 'copyToClipboard must return a boolean');
-  const detailed = await copyToClipboardDetailed('DevPulse detailed test');
+  const detailed = await copyToClipboardDetailed('Mustro detailed test');
   assert.ok(typeof detailed.success === 'boolean');
   assert.ok(typeof detailed.osSuccess === 'boolean');
   assert.ok(typeof detailed.osc52Sent === 'boolean');

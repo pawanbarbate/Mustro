@@ -1,11 +1,11 @@
 import assert from 'assert';
 import { dashboardReducer, createInitialDashboardState, DashboardState } from '../src/state/dashboardReducer.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import { MustroConfig } from '../src/types/config.js';
 
 async function runUptimePrecisionTests() {
   console.log('=== STARTING UPTIME & CLOCK PRECISION TESTS ===\n');
 
-  const config: DevPulseConfig = {
+  const config: MustroConfig = {
     name: 'test-app',
     services: [
       { name: 'api', path: '.', command: 'node server.js', port: 3000, autoStart: true },

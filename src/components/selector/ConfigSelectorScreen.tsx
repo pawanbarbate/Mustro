@@ -364,7 +364,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
                         {cfg.isValid ? (
                           <Text color={isSelected ? theme.colors.running : theme.colors.textMuted}>
                             ● {cfg.servicesCount} {cfg.servicesCount === 1 ? 'service' : 'services'}
-                            {showConfigName && cfg.name && cfg.name !== 'services' && cfg.name !== cfg.filename.replace(/\.(mustro|devpulse)\.json$/, '')
+                            {showConfigName && cfg.name && cfg.name !== 'services' && cfg.name !== cfg.filename.replace(/\.mustro\.json$/, '')
                               ? <Text color={theme.colors.textDim}> · {cfg.name}</Text>
                               : null}
                           </Text>

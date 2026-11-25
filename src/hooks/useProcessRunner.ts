@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { DashboardAction, DashboardState } from '../state/dashboardReducer.js';
-import { DevPulseConfig } from '../types/config.js';
+import { MustroConfig } from '../types/config.js';
 import { ProcessCallbacks, LogEntry } from '../types/index.js';
 import { processManager } from '../services/processManager.js';
 
 export interface UseProcessRunnerProps {
-  config?: DevPulseConfig;
+  config?: MustroConfig;
   state: DashboardState;
   dispatch: React.Dispatch<DashboardAction>;
 }

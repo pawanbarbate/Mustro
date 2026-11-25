@@ -2,12 +2,12 @@ import React from 'react';
 import assert from 'node:assert';
 import { render } from 'ink';
 import { PassThrough } from 'stream';
-import DevPulse from '../src/DevPulse.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import Mustro from '../src/Mustro.js';
+import { MustroConfig } from '../src/types/config.js';
 import { processManager } from '../src/services/processManager.js';
 
 async function runDashboardClickTests() {
-  console.log('--- STARTING DEVPULSE DASHBOARD CLICKABLE VERIFICATION ---');
+  console.log('--- STARTING MUSTRO DASHBOARD CLICKABLE VERIFICATION ---');
 
   const stdin = new PassThrough() as any;
   stdin.setRawMode = () => {};
@@ -26,7 +26,7 @@ async function runDashboardClickTests() {
     return true;
   };
 
-  const mockConfig: DevPulseConfig = {
+  const mockConfig: MustroConfig = {
     name: 'test-project',
     services: [
       { name: 'auth-service', path: '.', command: 'node -e "setInterval(()=>{},1000)"', port: 4001, autoStart: false },
@@ -36,7 +36,7 @@ async function runDashboardClickTests() {
   };
 
   const { unmount } = render(
-    <DevPulse width={100} height={30} config={mockConfig} />,
+    <Mustro width={100} height={30} config={mockConfig} />,
     { stdin, stdout }
   );
 

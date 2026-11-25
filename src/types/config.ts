@@ -15,7 +15,7 @@ export interface OrchestratorSettings {
   maxConcurrentBoot?: number;
 }
 
-export interface DevPulseConfig {
+export interface MustroConfig {
   $schema?: string;
   name?: string;
   version?: string;

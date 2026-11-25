@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import React, { useState, useEffect } from 'react';
 import { render, Box } from 'ink';
-import DevPulse from './DevPulse.js';
+import Mustro from './Mustro.js';
 import SetupWizard from './components/wizard/SetupWizard.js';
 import ConfigSelectorScreen from './components/selector/ConfigSelectorScreen.js';
 import NoConfigWelcomeScreen from './components/welcome/NoConfigWelcomeScreen.js';
@@ -18,7 +18,7 @@ import {
   ConfigFileSummary
 } from './services/configManager.js';
 import { processManager } from './services/processManager.js';
-import { DevPulseConfig } from './types/config.js';
+import { MustroConfig } from './types/config.js';
 import { theme } from './theme/theme.js';
 import { logger } from './logger/logger.js';
 import packageJson from '../package.json' with { type: 'json' };
@@ -124,7 +124,7 @@ const App: React.FC = () => {
     () => initialSyncState?.activeConfigPath || null
   );
 
-  const [config, setConfig] = useState<DevPulseConfig | null>(
+  const [config, setConfig] = useState<MustroConfig | null>(
     () => initialSyncState?.config || null
   );
 
@@ -199,7 +199,7 @@ const App: React.FC = () => {
     setMode(resolved.mode);
   };
 
-  const handleWizardComplete = (newConfig: DevPulseConfig) => {
+  const handleWizardComplete = (newConfig: MustroConfig) => {
     setConfig(newConfig);
     const refreshed = getConfigFilePath(process.cwd());
     if (refreshed) setActiveConfigPath(refreshed);
@@ -271,7 +271,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <DevPulse 
+    <Mustro
       config={config || undefined} 
       onOpenConfig={() => setMode('wizard')}
       onSwitchConfig={handleSwitchConfig}

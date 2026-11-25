@@ -6,7 +6,7 @@ import {
   ServiceStatus,
   SystemMetrics,
   LogEntry,
-  DevPulseConfig,
+  MustroConfig,
   JsonTextSelection
 } from '../types/index.js';
 import {
@@ -115,7 +115,7 @@ export const initialDashboardState: DashboardState = {
   maximizedPanel: 'none'
 };
 
-export function configToServices(config?: DevPulseConfig): Service[] {
+export function configToServices(config?: MustroConfig): Service[] {
   if (!config || !config.services || config.services.length === 0) {
     return [];
   }
@@ -141,7 +141,7 @@ export function configToServices(config?: DevPulseConfig): Service[] {
   }));
 }
 
-export function createInitialDashboardState(config?: DevPulseConfig): DashboardState {
+export function createInitialDashboardState(config?: MustroConfig): DashboardState {
   const services = configToServices(config);
   const filterOptions = services.length > 0
     ? ['All Services', ...services.map(s => s.name)]

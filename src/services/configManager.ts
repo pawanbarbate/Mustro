@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { DevPulseConfig, ServiceConfig } from '../types/config.js';
+import { MustroConfig, ServiceConfig } from '../types/config.js';
 import { logger } from '../logger/logger.js';
 
 export const CONFIG_FILENAMES = [
@@ -9,11 +9,10 @@ export const CONFIG_FILENAMES = [
   'mustro.json',
   '.mustrorc.json',
   '.mustrorc',
-  '.mustro.json',
-  'config.devpulse.json',
-  'devpulse.config.json',
-  'devpulse.json'
+  '.mustro.json'
 ];
+
+const LEGACY_CONFIG_FILENAME_PATTERN = /(?:\.devpulse\.json|^devpulse(?:\.config)?\.json$)/i;
 
 export interface CliArgs {
   configPath?: string;
@@ -48,7 +47,7 @@ export function parseCliArgs(argv: string[] = process.argv.slice(2)): CliArgs {
       }
     } else if (arg.startsWith('--config=')) {
       configPath = arg.slice('--config='.length);
-    } else if (!arg.startsWith('-') && (arg.endsWith('.json') || arg.includes('mustro') || arg.includes('devpulse'))) {
+    } else if (!arg.startsWith('-') && (arg.endsWith('.json') || arg.includes('mustro'))) {
       configPath = arg;
     }
   }
@@ -75,17 +74,15 @@ export function findAllConfigFiles(cwd: string = process.cwd()): string[] {
     }
   }
 
-  // 2. Dynamic pattern matching: scan cwd for any `*.mustro.json` file (legacy `.devpulse.json` remains supported)
+  // 2. Dynamic pattern matching: scan cwd for any `*.mustro.json` file
   try {
     if (fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()) {
       const entries = fs.readdirSync(cwd);
       const dynamicMatches = entries
-        .filter(entry => /^.+\.(mustro|devpulse)\.json$/i.test(entry))
+        .filter(entry => /^.+\.mustro\.json$/i.test(entry))
         .sort((a, b) => {
           if (a.toLowerCase() === 'config.mustro.json') return -1;
           if (b.toLowerCase() === 'config.mustro.json') return 1;
-          if (a.toLowerCase() === 'config.devpulse.json') return -1;
-          if (b.toLowerCase() === 'config.devpulse.json') return 1;
           return a.localeCompare(b);
         });
 
@@ -110,12 +107,12 @@ export function getConfigFileSummaries(cwd: string = process.cwd()): ConfigFileS
     const filename = path.basename(filePath);
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as DevPulseConfig;
+      const parsed = JSON.parse(raw) as MustroConfig;
       if (parsed && Array.isArray(parsed.services)) {
         return {
           path: filePath,
           filename,
-          name: parsed.name || filename.replace(/\.(mustro|devpulse)\.json$/i, ''),
+          name: parsed.name || filename.replace(/\.mustro\.json$/i, ''),
           version: parsed.version,
           servicesCount: parsed.services.length,
           services: parsed.services.map(s => ({
@@ -172,12 +169,12 @@ export async function getConfigFileSummariesAsync(
     const filename = path.basename(filePath);
     try {
       const raw = await fs.promises.readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as DevPulseConfig;
+      const parsed = JSON.parse(raw) as MustroConfig;
       if (parsed && Array.isArray(parsed.services)) {
         summaries.push({
           path: filePath,
           filename,
-          name: parsed.name || filename.replace(/\.(mustro|devpulse)\.json$/i, ''),
+          name: parsed.name || filename.replace(/\.mustro\.json$/i, ''),
           version: parsed.version,
           servicesCount: parsed.services.length,
           services: parsed.services.map(s => ({
@@ -221,7 +218,7 @@ export async function getConfigFileSummariesAsync(
 export interface InitialAppState {
   summaries: ConfigFileSummary[];
   activeConfigPath: string | null;
-  config: DevPulseConfig | null;
+  config: MustroConfig | null;
   mode: 'dashboard' | 'wizard' | 'selector' | 'welcome';
 }
 
@@ -289,6 +286,10 @@ export function hasConfigFile(cwdOrPath: string = process.cwd()): boolean {
  * Supports standard names as well as dynamic `(anyname).mustro.json` patterns.
  */
 export function getConfigFilePath(cwdOrPath: string = process.cwd()): string | null {
+  if (LEGACY_CONFIG_FILENAME_PATTERN.test(path.basename(cwdOrPath))) {
+    return null;
+  }
+
   // If target path is directly an existing file, resolve and return it
   try {
     if (fs.existsSync(cwdOrPath) && fs.statSync(cwdOrPath).isFile()) {
@@ -315,12 +316,10 @@ export function getConfigFilePath(cwdOrPath: string = process.cwd()): string | n
     if (fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()) {
       const entries = fs.readdirSync(cwd);
       const dynamicMatches = entries
-        .filter(entry => /^.+\.(mustro|devpulse)\.json$/i.test(entry))
+        .filter(entry => /^.+\.mustro\.json$/i.test(entry))
         .sort((a, b) => {
           if (a.toLowerCase() === 'config.mustro.json') return -1;
           if (b.toLowerCase() === 'config.mustro.json') return 1;
-          if (a.toLowerCase() === 'config.devpulse.json') return -1;
-          if (b.toLowerCase() === 'config.devpulse.json') return 1;
           return a.localeCompare(b);
         });
 
@@ -339,13 +338,13 @@ export function getConfigFilePath(cwdOrPath: string = process.cwd()): string | n
 /**
  * Load and parse the MUSTRO config file from a directory or specific path.
  */
-export function loadConfigFile(cwdOrPath: string = process.cwd()): DevPulseConfig | null {
+export function loadConfigFile(cwdOrPath: string = process.cwd()): MustroConfig | null {
   const filePath = getConfigFilePath(cwdOrPath);
   if (!filePath) return null;
 
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(raw) as DevPulseConfig;
+    const parsed = JSON.parse(raw) as MustroConfig;
     if (parsed && Array.isArray(parsed.services)) {
       return parsed;
     }
@@ -360,14 +359,14 @@ export function loadConfigFile(cwdOrPath: string = process.cwd()): DevPulseConfi
  * Save configuration to mustro.config.json or the active configuration file in the directory.
  */
 export function saveConfigFile(
-  config: DevPulseConfig,
+  config: MustroConfig,
   cwd: string = process.cwd(),
   customFilePath?: string
 ): string {
   const targetPath = customFilePath
     ? (path.isAbsolute(customFilePath) ? customFilePath : path.resolve(cwd, customFilePath))
     : (getConfigFilePath(cwd) || path.resolve(cwd, 'config.mustro.json'));
-  const payload: DevPulseConfig = {
+  const payload: MustroConfig = {
     $schema: 'https://mustro.dev/schema.json',
     name: config.name || path.basename(cwd) || 'Workspace',
     version: config.version || '1.0.0',

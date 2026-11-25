@@ -6,8 +6,8 @@ import { ConfigSelectorScreen } from '../src/components/selector/ConfigSelectorS
 import { ConfigFileSummary } from '../src/services/configManager.js';
 
 const createConfigs = (count: number): ConfigFileSummary[] => Array.from({ length: count }, (_, index) => ({
-  path: `/workspace/profile-${index + 1}.devpulse.json`,
-  filename: `profile-${index + 1}.devpulse.json`,
+  path: `/workspace/profile-${index + 1}.mustro.json`,
+  filename: `profile-${index + 1}.mustro.json`,
   name: `profile-${index + 1}`,
   servicesCount: 0,
   services: [],

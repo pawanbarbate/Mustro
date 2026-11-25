@@ -9,7 +9,7 @@ import { ClickManagerContextValue, ClickProvider } from '../src/components/commo
 import { useTerminalInput } from '../src/hooks/useTerminalInput.js';
 import { DashboardState, dashboardReducer, initialDashboardState } from '../src/state/dashboardReducer.js';
 import SetupWizard from '../src/components/wizard/SetupWizard.js';
-import { DevPulseConfig } from '../types/config.js';
+import { MustroConfig } from '../types/config.js';
 import { Service, ViewportInfo } from '../src/types/index.js';
 import { stripAnsiEscapeCodes } from '../src/utils/ansi.js';
 
@@ -343,7 +343,7 @@ async function runMouseClickTests() {
   stdout.columns = 80;
   stdout.rows = 24;
 
-  let completedConfig: DevPulseConfig | null = null;
+  let completedConfig: MustroConfig | null = null;
 
   try {
     const { unmount } = render(
@@ -423,8 +423,8 @@ async function runMouseClickTests() {
     }
   } finally {
     try {
-      if (fs.existsSync('config.devpulse.json')) {
-        fs.unlinkSync('config.devpulse.json');
+      if (fs.existsSync('config.mustro.json')) {
+        fs.unlinkSync('config.mustro.json');
       }
     } catch {}
   }
