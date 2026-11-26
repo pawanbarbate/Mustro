@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { SystemMetrics } from '../types/index.js';
 import { theme } from '../theme/theme.js';
+import packageJson from '../../package.json' with { type: 'json' };
 
 export interface SystemPanelProps {
   metrics?: SystemMetrics;
@@ -87,7 +88,7 @@ export const SystemPanel: React.FC<SystemPanelProps> = React.memo(({
       {/* Header */}
       <Box marginBottom={0} justifyContent="space-between" flexWrap="nowrap">
         <Text color={theme.colors.textSecondary} bold>ORCHESTRATION</Text>
-        <Text color={theme.colors.textMuted}>v1.0.0</Text>
+        <Text color={theme.colors.textMuted}>v{packageJson.version}</Text>
       </Box>
 
       {/* Row 1: Health State */}

@@ -78,6 +78,21 @@ export function stripAnsiEscapeCodes(text: string): string {
   return text.replace(ANSI_ESCAPE_SEQUENCE, '');
 }
 
+const SGR_OR_ESCAPE = /\u001B\[[0-9;]*m|\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\)|P[^\u001B]*(?:\u001B\\|\u0007)|[ -/]*[@-~])|\u009B[0-?]*[ -/]*[@-~]|\u009D[^\u0007]*(?:\u0007|\u009C)/g;
+const UNSAFE_C0_CONTROL = /[\u0000-\u0008\u000B-\u001A\u001C-\u001F\u007F]/g;
+
+/**
+ * Strip dangerous non-SGR terminal control sequences (OSC title/clipboard/hyperlinks,
+ * CSI cursor movement, DCS, and raw C0 control characters) while preserving SGR colors.
+ */
+export function sanitizeTerminalOutput(text: string): string {
+  if (!text) return '';
+  const withoutUnsafeEscapes = text.replace(SGR_OR_ESCAPE, (seq) => {
+    return /^\u001B\[[0-9;]*m$/.test(seq) ? seq : '';
+  });
+  return withoutUnsafeEscapes.replace(UNSAFE_C0_CONTROL, '');
+}
+
 export function truncateAnsiText(text: string, maxLength: number): string {
   const visibleText = stripAnsiEscapeCodes(text);
   if (visibleText.length <= maxLength) return text;

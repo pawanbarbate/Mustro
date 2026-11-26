@@ -72,11 +72,23 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const selectedIndexRef = useRef(0);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+
+  const tryLaunchConfig = (cfg?: ConfigFileSummary) => {
+    if (!cfg) return;
+    if (!cfg.isValid) {
+      setSelectionError(`Cannot launch "${cfg.filename}": ${cfg.error || 'Invalid configuration'}`);
+      return;
+    }
+    setSelectionError(null);
+    onSelect(cfg.path);
+  };
 
   const updateSelection = (index: number) => {
     const nextIndex = Math.max(0, Math.min(configs.length - 1, index));
     selectedIndexRef.current = nextIndex;
     setSelectedIndex(nextIndex);
+    setSelectionError(null);
   };
 
   // Keyboard navigation & SGR mouse handling
@@ -152,18 +164,14 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
 
     // 5. Enter / Space: Select focused config
     if (key.return || input === ' ') {
-      if (configs[selectedIndexRef.current]) {
-        onSelect(configs[selectedIndexRef.current]!.path);
-      }
+      tryLaunchConfig(configs[selectedIndexRef.current]);
       return;
     }
 
     // 6. Direct number keys 1-9
     if (/^[1-9]$/.test(input)) {
       const idx = parseInt(input, 10) - 1;
-      if (configs[idx]) {
-        onSelect(configs[idx]!.path);
-      }
+      tryLaunchConfig(configs[idx]);
       return;
     }
 
@@ -332,7 +340,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
                     backgroundColor={theme.colors.surface}
                     onClick={() => {
                       updateSelection(idx);
-                      onSelect(cfg.path);
+                      tryLaunchConfig(cfg);
                     }}
                   >
                     <Box
@@ -431,7 +439,12 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
 
             {/* Quick Actions Bar - Primary CTA + Text Links */}
             <Box flexDirection="column" width="100%" marginBottom={1}>
-              <Clickable id="action-launch" onClick={() => configs[selectedIndex] && onSelect(configs[selectedIndex]!.path)} width="100%">
+              {selectionError && (
+                <Box backgroundColor={theme.colors.stoppedBg} paddingX={1} marginBottom={1} width="100%">
+                  <Text color={theme.colors.stopped} bold wrap="truncate-end">✖ {selectionError}</Text>
+                </Box>
+              )}
+              <Clickable id="action-launch" onClick={() => tryLaunchConfig(configs[selectedIndex])} width="100%">
                 <Box
                   backgroundColor={theme.colors.accent}
                   justifyContent="center"

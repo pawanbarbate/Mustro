@@ -59,7 +59,7 @@ export const theme = {
     // Alternate Screen Buffer Initialization (TrueColor BCE + cursor home) - ZERO OSC 11 host palette pollution
     initScreen: '\x1b[48;2;11;15;25m\x1b[2J\x1b[H',
     // Complete Cross-Platform Restoration on Exit (Reset SGR colors, disable mouse, show cursor, leave alternate buffer)
-    restoreScreen: '\x1b[0m\x1b[49m\x1b[39m\x1b[?1000l\x1b[?1006l\x1b[?25h\x1b[?1049l',
+    restoreScreen: '\x1b[0m\x1b[49m\x1b[39m\x1b[?1000l\x1b[?1002l\x1b[?1006l\x1b[?25h\x1b[?1049l',
   }
 } as const;
 

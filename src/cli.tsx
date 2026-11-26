@@ -45,7 +45,8 @@ Controls:
   1 / 2                 Switch tabs (Logs, Errors)
   /                     Search logs
   f                     Cycle service filter
-  Space / l             Toggle live streaming
+  l                     Toggle live streaming
+  Enter / Space / v / i Expand / collapse JSON log
   q / Ctrl+C            Exit MUSTRO
 `);
   process.exit(0);
@@ -56,7 +57,7 @@ if (args.includes('-v') || args.includes('--version')) {
   process.exit(0);
 }
 
-if (!process.stdout.isTTY) {
+if (!process.stdout.isTTY || !process.stdin.isTTY) {
   console.error('Error: MUSTRO requires an interactive TTY terminal to run.');
   process.exit(1);
 }

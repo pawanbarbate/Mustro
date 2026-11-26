@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../theme/theme.js';
+import packageJson from '../../package.json' with { type: 'json' };
 
 export interface HeaderProps {
   time?: string;
@@ -54,7 +55,7 @@ export const Header: React.FC<HeaderProps> = React.memo(({
         {!isVeryNarrow && (
           <>
             <Box backgroundColor={theme.colors.card} paddingX={1} marginRight={1}>
-              <Text color={theme.colors.textSecondary}>v1.0.0</Text>
+              <Text color={theme.colors.textSecondary}>v{packageJson.version}</Text>
             </Box>
             <Text color={theme.colors.textDim}>│ </Text>
           </>

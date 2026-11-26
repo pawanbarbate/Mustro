@@ -207,6 +207,16 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
       setActivePanel('form');
       return;
     }
+    const normalizedName = name.trim().toLowerCase();
+    const isDuplicateName = services.some((s, idx) =>
+      (isEditingNew || idx !== selectedIndex) && s.name.trim().toLowerCase() === normalizedName
+    );
+    if (isDuplicateName) {
+      setError(`Service "${name.trim()}" already exists`);
+      setFocusedField('name');
+      setActivePanel('form');
+      return;
+    }
     if (!pathValue.trim()) {
       setError('Folder path is required');
       setFocusedField('path');
@@ -231,6 +241,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
     const parsedDeps = dependsOnStr.trim()
       ? dependsOnStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
       : undefined;
+    if (parsedDeps && parsedDeps.includes(normalizedName)) {
+      setError('A service cannot depend on itself');
+      setFocusedField('dependsOn');
+      setActivePanel('form');
+      return;
+    }
 
     const parsedPre = preStartStr.trim()
       ? (preStartStr.includes('&&')
