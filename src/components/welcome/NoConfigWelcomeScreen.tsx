@@ -97,13 +97,13 @@ export const NoConfigWelcomeScreen: React.FC<NoConfigWelcomeScreenProps> = ({
             width={cardWidth}
           >
             <Box marginBottom={1} flexDirection="row" alignItems="center">
-              <Text color={theme.colors.accent} bold>~^v~ DevPulse</Text>
+              <Text color={theme.colors.accent} bold>~^v~ MUSTRO</Text>
               <Text color={theme.colors.textSecondary}> — Workspace Setup</Text>
             </Box>
 
             <Box marginBottom={1} flexDirection="column" alignItems="center">
               <Text color={theme.colors.textSecondary}>
-                No DevPulse configuration file was found in:
+                No MUSTRO configuration file was found in:
               </Text>
               <Text color={theme.colors.accent} bold wrap="truncate-middle">
                 {process.cwd()}
@@ -147,7 +147,7 @@ export const NoConfigWelcomeScreen: React.FC<NoConfigWelcomeScreenProps> = ({
           backgroundColor={theme.colors.canvas} 
           paddingX={1}
         >
-          <Text color={theme.colors.textMuted}>DevPulse v1.0.0</Text>
+          <Text color={theme.colors.textMuted}>MUSTRO v1.0.0</Text>
           <Text color={theme.colors.textDim}>Enter: Create Config  │  Esc/q: Exit</Text>
         </Box>
       </Box>

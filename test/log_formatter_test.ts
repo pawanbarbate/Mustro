@@ -73,7 +73,7 @@ async function runLogFormatterTests() {
   // Test 4: Syntax highlighting tokenization
   console.log('\n[Test 4] Testing formatJsonToHighlightedLines token coloring...');
   const testPayload = {
-    appName: 'devpulse',
+    appName: 'mustro',
     port: 8080,
     debug: false,
     empty: null
@@ -86,7 +86,7 @@ async function runLogFormatterTests() {
   assert.ok(appNameLine, 'Must have appName line');
   const keyToken = appNameLine?.tokens.find(t => t.text === '"appName"');
   assert.ok(keyToken?.bold, 'Key token must be bold');
-  const strToken = appNameLine?.tokens.find(t => t.text === '"devpulse"');
+  const strToken = appNameLine?.tokens.find(t => t.text === '"mustro"');
   assert.ok(strToken?.color, 'String token must have color');
 
   // Find line with "port"

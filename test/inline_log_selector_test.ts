@@ -74,7 +74,7 @@ async function runInlineLogSelectorTests() {
     path: '/api/v1/auth/login',
     status: 200,
     latencyMs: 14.5,
-    user: 'admin@devpulse.local',
+    user: 'admin@mustro.local',
     active: true
   });
 
@@ -88,7 +88,7 @@ async function runInlineLogSelectorTests() {
   // Verify token highlighting categories
   const allTokens = lines.flatMap(l => l.tokens);
   const hasKey = allTokens.some(t => t.text.includes('"path"'));
-  const hasString = allTokens.some(t => t.text.includes('"admin@devpulse.local"'));
+  const hasString = allTokens.some(t => t.text.includes('"admin@mustro.local"'));
   const hasNumber = allTokens.some(t => t.text.includes('200'));
   const hasBool = allTokens.some(t => t.text.includes('true'));
 

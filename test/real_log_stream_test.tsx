@@ -1,12 +1,12 @@
 import React from 'react';
 import { render } from 'ink';
 import { PassThrough } from 'stream';
-import DevPulse from '../src/DevPulse.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import Mustro from '../src/Mustro.js';
+import { MustroConfig } from '../src/types/config.js';
 import { processManager } from '../src/services/processManager.js';
 
 async function runRealLogStreamTest() {
-  console.log('--- STARTING DEVPULSE REAL SUBPROCESS TUI INTEGRATION TEST ---');
+  console.log('--- STARTING MUSTRO REAL SUBPROCESS TUI INTEGRATION TEST ---');
 
   const stdin = new PassThrough() as any;
   stdin.setRawMode = () => {};
@@ -25,7 +25,7 @@ async function runRealLogStreamTest() {
     return true;
   };
 
-  const mockConfig: DevPulseConfig = {
+  const mockConfig: MustroConfig = {
     name: 'live-test-workspace',
     services: [
       {
@@ -39,7 +39,7 @@ async function runRealLogStreamTest() {
   };
 
   const { unmount } = render(
-    <DevPulse width={100} height={30} config={mockConfig} />,
+    <Mustro width={100} height={30} config={mockConfig} />,
     { stdin, stdout }
   );
 

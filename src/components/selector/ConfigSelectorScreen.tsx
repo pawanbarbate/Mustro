@@ -364,7 +364,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
                         {cfg.isValid ? (
                           <Text color={isSelected ? theme.colors.running : theme.colors.textMuted}>
                             ● {cfg.servicesCount} {cfg.servicesCount === 1 ? 'service' : 'services'}
-                            {showConfigName && cfg.name && cfg.name !== 'services' && cfg.name !== cfg.filename.replace(/\.devpulse\.json$/, '')
+                            {showConfigName && cfg.name && cfg.name !== 'services' && cfg.name !== cfg.filename.replace(/\.mustro\.json$/, '')
                               ? <Text color={theme.colors.textDim}> · {cfg.name}</Text>
                               : null}
                           </Text>
@@ -456,7 +456,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
           </Box>
         </Box>
 
-        {/* Footer Keybinding Cheatsheet matching DevPulse bracket style */}
+        {/* Footer Keybinding Cheatsheet */}
         <Box
           flexDirection="row"
           justifyContent="space-between"
@@ -474,7 +474,7 @@ export const ConfigSelectorScreen: React.FC<ConfigSelectorScreenProps> = ({
 
           <Box flexDirection="row" alignItems="center">
             <Text color={theme.colors.accent}>● </Text>
-            <Text color={theme.colors.textMuted}>DevPulse Profile Selector</Text>
+            <Text color={theme.colors.textMuted}>MUSTRO Profile Selector</Text>
           </Box>
         </Box>
       </Box>

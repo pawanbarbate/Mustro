@@ -1,9 +1,9 @@
 import React from 'react';
 import { renderToString } from 'ink';
-import DevPulse from '../src/DevPulse.js';
+import Mustro from '../src/Mustro.js';
 
-console.log('--- RENDERING DEVPULSE AT 110x36 (USER SCREENSHOT DIMENSIONS) ---');
-const output = renderToString(<DevPulse width={110} height={36} />);
+console.log('--- RENDERING MUSTRO AT 110x36 (USER SCREENSHOT DIMENSIONS) ---');
+const output = renderToString(<Mustro width={110} height={36} />);
 const lines = output.split('\n');
 console.log(`Rendered line count: ${lines.length}`);
 

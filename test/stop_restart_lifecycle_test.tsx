@@ -1,8 +1,8 @@
 import React from 'react';
 import { render } from 'ink';
 import { PassThrough } from 'stream';
-import DevPulse from '../src/DevPulse.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import Mustro from '../src/Mustro.js';
+import { MustroConfig } from '../src/types/config.js';
 import { processManager } from '../src/services/processManager.js';
 
 async function runStopRestartLifecycleTest() {
@@ -25,7 +25,7 @@ async function runStopRestartLifecycleTest() {
     return true;
   };
 
-  const mockConfig: DevPulseConfig = {
+  const mockConfig: MustroConfig = {
     name: 'test-stop-restart',
     services: [
       {
@@ -39,7 +39,7 @@ async function runStopRestartLifecycleTest() {
   };
 
   const { unmount } = render(
-    <DevPulse width={100} height={30} config={mockConfig} />,
+    <Mustro width={100} height={30} config={mockConfig} />,
     { stdin, stdout }
   );
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import React, { useState, useEffect } from 'react';
 import { render, Box } from 'ink';
-import DevPulse from './DevPulse.js';
+import Mustro from './Mustro.js';
 import SetupWizard from './components/wizard/SetupWizard.js';
 import ConfigSelectorScreen from './components/selector/ConfigSelectorScreen.js';
 import NoConfigWelcomeScreen from './components/welcome/NoConfigWelcomeScreen.js';
@@ -18,23 +18,24 @@ import {
   ConfigFileSummary
 } from './services/configManager.js';
 import { processManager } from './services/processManager.js';
-import { DevPulseConfig } from './types/config.js';
+import { MustroConfig } from './types/config.js';
 import { theme } from './theme/theme.js';
 import { logger } from './logger/logger.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 // 0. Handle CLI Help & Version flags before any terminal buffer initialization
 const args = process.argv.slice(2);
 if (args.includes('-h') || args.includes('--help')) {
   console.log(`
-DevPulse - Modern Terminal Workspace Orchestrator for Multi-Service Apps
+MUSTRO - Modern Terminal Workspace Orchestrator for Multi-Service Apps
 
 Usage:
-  devpulse [options] [config-file]
+  mustro [options] [config-file]
 
 Options:
-  -c, --config <file>   Specify a custom DevPulse config file
+  -c, --config <file>   Specify a custom MUSTRO config file
   -h, --help            Show this help message
-  -v, --version         Show DevPulse version
+  -v, --version         Show MUSTRO version
 
 Controls:
   ↑/↓ or j/k            Navigate services
@@ -45,18 +46,18 @@ Controls:
   /                     Search logs
   f                     Cycle service filter
   Space / l             Toggle live streaming
-  q / Ctrl+C            Exit DevPulse
+  q / Ctrl+C            Exit MUSTRO
 `);
   process.exit(0);
 }
 
 if (args.includes('-v') || args.includes('--version')) {
-  console.log('devpulse v1.0.0');
+  console.log(packageJson.version);
   process.exit(0);
 }
 
 if (!process.stdout.isTTY) {
-  console.error('Error: DevPulse requires an interactive TTY terminal to run.');
+  console.error('Error: MUSTRO requires an interactive TTY terminal to run.');
   process.exit(1);
 }
 
@@ -123,7 +124,7 @@ const App: React.FC = () => {
     () => initialSyncState?.activeConfigPath || null
   );
 
-  const [config, setConfig] = useState<DevPulseConfig | null>(
+  const [config, setConfig] = useState<MustroConfig | null>(
     () => initialSyncState?.config || null
   );
 
@@ -198,7 +199,7 @@ const App: React.FC = () => {
     setMode(resolved.mode);
   };
 
-  const handleWizardComplete = (newConfig: DevPulseConfig) => {
+  const handleWizardComplete = (newConfig: MustroConfig) => {
     setConfig(newConfig);
     const refreshed = getConfigFilePath(process.cwd());
     if (refreshed) setActiveConfigPath(refreshed);
@@ -270,7 +271,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <DevPulse 
+    <Mustro
       config={config || undefined} 
       onOpenConfig={() => setMode('wizard')}
       onSwitchConfig={handleSwitchConfig}

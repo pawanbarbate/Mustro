@@ -12,7 +12,7 @@ import { useTerminalInput } from './hooks/useTerminalInput.js';
 import { useProcessRunner } from './hooks/useProcessRunner.js';
 import { ClickProvider, Clickable, ClickManagerContextValue } from './components/common/ClickManager.js';
 import { theme } from './theme/theme.js';
-import { DevPulseConfig } from './types/config.js';
+import { MustroConfig } from './types/config.js';
 import { LogEntry } from './types/index.js';
 import { stripAnsiEscapeCodes, truncateAnsiText } from './utils/ansi.js';
 import {
@@ -24,15 +24,15 @@ import {
 } from './utils/clipboard.js';
 import { prettyPrintJson, parseJsonLog, formatJsonToHighlightedLines, filterGlobalLogs, calculateVisibleLogWindow, getLogScrollOffsetForEntry, getLogDisplayText, getSelectedJsonText } from './utils/logFormatter.js';
 
-export interface DevPulseProps {
-  config?: DevPulseConfig;
+export interface MustroProps {
+  config?: MustroConfig;
   onOpenConfig?: () => void;
   onSwitchConfig?: () => void;
   width?: number;
   height?: number;
 }
 
-export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwitchConfig, width, height }) => {
+export const Mustro: React.FC<MustroProps> = ({ config, onOpenConfig, onSwitchConfig, width, height }) => {
   const { exit } = useApp();
   const [state, dispatch] = useReducer(dashboardReducer, config, createInitialDashboardState);
   const viewport = useTerminalViewport(width, height, state.maximizedPanel);
@@ -745,4 +745,4 @@ export const DevPulse: React.FC<DevPulseProps> = ({ config, onOpenConfig, onSwit
   );
 };
 
-export default DevPulse;
+export default Mustro;

@@ -1,11 +1,11 @@
 import path from 'path';
 import fs from 'fs';
 import { autoDetectServices, saveConfigFile, loadConfigFile, hasConfigFile } from '../src/services/configManager.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import { MustroConfig } from '../src/types/config.js';
 
 const fixtureDir = path.resolve(process.cwd(), 'test/fixtures/sample-microservices');
 
-console.log('--- TESTING DEVPULSE AS A PACKAGE IN EXTERNAL FIXTURE ---');
+console.log('--- TESTING MUSTRO AS A PACKAGE IN EXTERNAL FIXTURE ---');
 console.log('Fixture directory:', fixtureDir);
 
 // 1. Verify no config exists initially
@@ -13,11 +13,11 @@ const initialCheck = hasConfigFile(fixtureDir);
 console.log('[STEP 1] Has config initially:', initialCheck);
 if (initialCheck) {
   // Clean up if left from previous run
-  const cfgPath = path.join(fixtureDir, 'devpulse.config.json');
+  const cfgPath = path.join(fixtureDir, 'mustro.config.json');
   if (fs.existsSync(cfgPath)) fs.unlinkSync(cfgPath);
 }
 
-// 2. Run auto-detection as if DevPulse started in that directory
+// 2. Run auto-detection as if MUSTRO started in that directory
 const detected = autoDetectServices(fixtureDir);
 console.log('[STEP 2] Detected services count:', detected.length);
 detected.forEach(d => {
@@ -33,8 +33,8 @@ if (!hasWeb || !hasApi) {
 }
 
 // 3. Simulate Wizard saving configuration
-const mockConfig: DevPulseConfig = {
-  $schema: 'https://devpulse.dev/schema.json',
+const mockConfig: MustroConfig = {
+  $schema: 'https://mustro.dev/schema.json',
   name: 'sample-microservices',
   version: '1.0.0',
   services: detected.map(d => ({
@@ -68,4 +68,4 @@ if (loaded && loaded.services.length === 2 && hasLoadedApi && hasLoadedWeb) {
 
 // Cleanup
 fs.unlinkSync(savedPath);
-console.log('Cleaned up test devpulse.config.json.');
+console.log('Cleaned up test mustro.config.json.');

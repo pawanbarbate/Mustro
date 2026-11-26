@@ -9,7 +9,7 @@ import { ClickManagerContextValue, ClickProvider } from '../src/components/commo
 import { useTerminalInput } from '../src/hooks/useTerminalInput.js';
 import { DashboardState, dashboardReducer, initialDashboardState } from '../src/state/dashboardReducer.js';
 import SetupWizard from '../src/components/wizard/SetupWizard.js';
-import { DevPulseConfig } from '../types/config.js';
+import { MustroConfig } from '../types/config.js';
 import { Service, ViewportInfo } from '../src/types/index.js';
 import { stripAnsiEscapeCodes } from '../src/utils/ansi.js';
 
@@ -144,8 +144,8 @@ async function runExpandedJsonMouseSelectionTest() {
     };
 
     const selectRange = async (panel: 'service' | 'global') => {
-        const startRegion = findRegion(`${panel}-json-line-1-1`);
-        const endRegion = findRegion(`${panel}-json-line-1-2`);
+      const startRegion = findRegion(`${panel}-json-line-1-1`);
+      const endRegion = findRegion(`${panel}-json-line-1-2`);
       stdin.write(`\x1b[<0;${startRegion.minX + 2};${startRegion.minY}M`);
       await new Promise(resolve => setTimeout(resolve, 30));
       stdin.write(`\x1b[<32;${endRegion.minX + 5};${endRegion.minY}M`);
@@ -163,6 +163,24 @@ async function runExpandedJsonMouseSelectionTest() {
         headLine: 2,
         headChar: 5
       });
+
+      stdin.write(`\x1b[<0;${Math.max(1, startRegion.minX - 5)};${startRegion.minY}M`);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      stdin.write(`\x1b[<32;${endRegion.minX + 5};${endRegion.minY}M`);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      stdin.write(`\x1b[<0;${endRegion.minX + 5};${endRegion.minY}m`);
+      await new Promise(resolve => setTimeout(resolve, 30));
+
+      const marginSelection = panel === 'service'
+        ? latestState.serviceJsonTextSelection
+        : latestState.globalJsonTextSelection;
+      assert.deepStrictEqual(marginSelection, {
+        logId: 'selection-json',
+        anchorLine: 1,
+        anchorChar: 0,
+        headLine: 2,
+        headChar: 5
+      }, 'Dragging from the indentation before JSON text should still start selection');
     };
     await selectRange('service');
     await selectRange('global');
@@ -343,7 +361,7 @@ async function runMouseClickTests() {
   stdout.columns = 80;
   stdout.rows = 24;
 
-  let completedConfig: DevPulseConfig | null = null;
+  let completedConfig: MustroConfig | null = null;
 
   try {
     const { unmount } = render(
@@ -423,8 +441,8 @@ async function runMouseClickTests() {
     }
   } finally {
     try {
-      if (fs.existsSync('config.devpulse.json')) {
-        fs.unlinkSync('config.devpulse.json');
+      if (fs.existsSync('config.mustro.json')) {
+        fs.unlinkSync('config.mustro.json');
       }
     } catch {}
   }

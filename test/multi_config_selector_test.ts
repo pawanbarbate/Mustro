@@ -9,7 +9,7 @@ import {
   loadConfigFile
 } from '../src/services/configManager.js';
 import { ConfigSelectorScreen } from '../src/components/selector/ConfigSelectorScreen.js';
-import { DevPulseConfig } from '../src/types/config.js';
+import { MustroConfig } from '../src/types/config.js';
 
 console.log('--- STARTING MULTI-CONFIG SELECTOR TESTS ---');
 
@@ -45,8 +45,8 @@ try {
   // Test 2: findAllConfigFiles with 1 config (single config flow)
   // -------------------------------------------------------------
   console.log('[TEST 2] Testing with 1 single configuration in workspace...');
-  const configA: DevPulseConfig = {
-    $schema: 'https://devpulse.dev/schema.json',
+  const configA: MustroConfig = {
+    $schema: 'https://mustro.dev/schema.json',
     name: 'dev-cluster',
     version: '1.0.0',
     services: [
@@ -54,14 +54,14 @@ try {
       { name: 'api', path: './services/api', command: 'npm run dev', port: 4000, autoStart: true }
     ]
   };
-  fs.writeFileSync(path.join(tmpDir, 'dev.devpulse.json'), JSON.stringify(configA, null, 2), 'utf-8');
+  fs.writeFileSync(path.join(tmpDir, 'dev.mustro.json'), JSON.stringify(configA, null, 2), 'utf-8');
 
   const singleConfigs = findAllConfigFiles(tmpDir);
   const singleSummaries = getConfigFileSummaries(tmpDir);
   if (singleConfigs.length !== 1 || singleSummaries.length !== 1) {
     throw new Error(`Expected exactly 1 configuration, got ${singleConfigs.length}`);
   }
-  if (singleSummaries[0]?.filename !== 'dev.devpulse.json' || singleSummaries[0]?.servicesCount !== 2) {
+  if (singleSummaries[0]?.filename !== 'dev.mustro.json' || singleSummaries[0]?.servicesCount !== 2) {
     throw new Error('Summary metadata does not match single config');
   }
   console.log('✔ Single config detected correctly (qualifies for direct auto-boot)');
@@ -70,8 +70,8 @@ try {
   // Test 3: Multiple configurations (> 1 files, triggers selector)
   // -------------------------------------------------------------
   console.log('[TEST 3] Testing multiple configurations discovery and summaries...');
-  const configB: DevPulseConfig = {
-    $schema: 'https://devpulse.dev/schema.json',
+  const configB: MustroConfig = {
+    $schema: 'https://mustro.dev/schema.json',
     name: 'staging-environment',
     version: '1.0.0',
     services: [
@@ -80,8 +80,8 @@ try {
       { name: 'worker', path: './worker', command: 'pnpm start', autoStart: false }
     ]
   };
-  const configC: DevPulseConfig = {
-    $schema: 'https://devpulse.dev/schema.json',
+  const configC: MustroConfig = {
+    $schema: 'https://mustro.dev/schema.json',
     name: 'production-local',
     version: '1.0.0',
     services: [
@@ -89,8 +89,8 @@ try {
     ]
   };
 
-  fs.writeFileSync(path.join(tmpDir, 'staging.devpulse.json'), JSON.stringify(configB, null, 2), 'utf-8');
-  fs.writeFileSync(path.join(tmpDir, 'production.devpulse.json'), JSON.stringify(configC, null, 2), 'utf-8');
+  fs.writeFileSync(path.join(tmpDir, 'staging.mustro.json'), JSON.stringify(configB, null, 2), 'utf-8');
+  fs.writeFileSync(path.join(tmpDir, 'production.mustro.json'), JSON.stringify(configC, null, 2), 'utf-8');
 
   const multiConfigs = findAllConfigFiles(tmpDir);
   const multiSummaries = getConfigFileSummaries(tmpDir);
@@ -100,12 +100,12 @@ try {
   }
 
   const filenames = multiSummaries.map(s => s.filename);
-  if (!filenames.includes('dev.devpulse.json') || !filenames.includes('staging.devpulse.json') || !filenames.includes('production.devpulse.json')) {
+  if (!filenames.includes('dev.mustro.json') || !filenames.includes('staging.mustro.json') || !filenames.includes('production.mustro.json')) {
     throw new Error(`Missing expected filenames in summaries: ${filenames.join(', ')}`);
   }
 
   // Check details of staging summary
-  const stagingSummary = multiSummaries.find(s => s.filename === 'staging.devpulse.json');
+  const stagingSummary = multiSummaries.find(s => s.filename === 'staging.mustro.json');
   if (!stagingSummary || stagingSummary.servicesCount !== 3 || stagingSummary.name !== 'staging-environment') {
     throw new Error('Staging summary metadata was not parsed accurately');
   }
@@ -115,10 +115,10 @@ try {
   // Test 4: Handling malformed / corrupt JSON config file gracefully
   // -------------------------------------------------------------
   console.log('[TEST 4] Testing graceful handling of corrupt JSON files...');
-  fs.writeFileSync(path.join(tmpDir, 'corrupted.devpulse.json'), '{ invalid json string content', 'utf-8');
+  fs.writeFileSync(path.join(tmpDir, 'corrupted.mustro.json'), '{ invalid json string content', 'utf-8');
 
   const corruptSummaries = getConfigFileSummaries(tmpDir);
-  const corruptItem = corruptSummaries.find(s => s.filename === 'corrupted.devpulse.json');
+  const corruptItem = corruptSummaries.find(s => s.filename === 'corrupted.mustro.json');
   if (!corruptItem) {
     throw new Error('Corrupted config file was omitted from summaries');
   }
@@ -131,7 +131,7 @@ try {
   // Test 5: CLI Flag bypass verification
   // -------------------------------------------------------------
   console.log('[TEST 5] Testing CLI flags bypassing selector...');
-  const parsedDirect = parseCliArgs(['--config', path.join(tmpDir, 'staging.devpulse.json')]);
+  const parsedDirect = parseCliArgs(['--config', path.join(tmpDir, 'staging.mustro.json')]);
   if (!parsedDirect.configPath) {
     throw new Error('Failed to parse --config path');
   }
@@ -165,7 +165,7 @@ try {
   if (!output.includes('MULTIPLE CONFIGURATIONS DETECTED')) {
     throw new Error('ConfigSelectorScreen header not found in rendered output');
   }
-  if (!output.includes('dev.devpulse.json') || !output.includes('staging.devpulse.json')) {
+  if (!output.includes('dev.mustro.json') || !output.includes('staging.mustro.json')) {
     throw new Error('Discovered config filenames missing from UI render');
   }
   if (!output.includes('Launch Profile (Enter)') || !output.includes('New Profile (w)')) {

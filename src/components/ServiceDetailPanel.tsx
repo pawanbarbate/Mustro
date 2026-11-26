@@ -424,7 +424,7 @@ export const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = React.memo(
               <Clickable onClick={() => onToggleMaximize?.()}>
                 <Box backgroundColor={theme.colors.card} paddingX={1}>
                   <Text color={theme.colors.accent} bold>
-                    [ {isMaximized ? '🗗 Restore' : '⤢ Zoom'} ]
+                    [ {isMaximized ? 'Restore' : 'Zoom'} ]
                   </Text>
                 </Box>
               </Clickable>

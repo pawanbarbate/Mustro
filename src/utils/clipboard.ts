@@ -124,7 +124,7 @@ export function formatLogEntry(log: LogEntry, serviceName?: string): string {
  */
 export function formatServiceErrorSummary(service: Service): string {
   const lines: string[] = [
-    `=== DevPulse Service Report: ${service.name} ===`,
+    `=== MUSTRO Service Report: ${service.name} ===`,
     `Status: ${service.status.toUpperCase()}${service.statusText ? ` (${service.statusText})` : ''}`,
     `Command: ${Array.isArray(service.command) ? service.command.join(' && ') : service.command}`,
     `Directory: ${service.path || '.'}`,
@@ -158,7 +158,7 @@ export function formatAllErrors(service: Service): string {
     return `[${service.name}] No recorded errors.`;
   }
 
-  const header = `=== DevPulse Error Log Dump: ${service.name} (${errors.length} error${errors.length === 1 ? '' : 's'}) ===\n`;
+  const header = `=== MUSTRO Error Log Dump: ${service.name} (${errors.length} error${errors.length === 1 ? '' : 's'}) ===\n`;
   const body = errors
     .map((err, i) => `#${i + 1} [${err.timestamp}] [${(err.level || 'ERROR').toUpperCase()}]:\n${err.message}`)
     .join('\n\n');
