@@ -1,7 +1,11 @@
+<p align="center">
+  <img src="assets/mustro-banner.svg" alt="MUSTRO — One command, your whole stack" width="100%">
+</p>
+
 # MUSTRO 🪄⚡
 
 > **One command, your whole stack.**  
-> *Your local development stack orchestrated — the funky, playful fusion of **Maestro** and **Muster**.*
+> *Local dev stack orchestration — fusing **Maestro** & **Muster**.*
 
 Built with **React 19**, **Ink 7**, and **TypeScript**. **MUSTRO** transforms multi-service terminal chaos into an ultra-fast, mouse-interactive developer cockpit featuring DAG dependency boot cascades, multi-command pipelines, real-time log telemetry, JSON inspection, and adaptive terminal layouts.
 
