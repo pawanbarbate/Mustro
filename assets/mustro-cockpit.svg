@@ -6,15 +6,15 @@
       <stop offset="100%" stop-color="#0B0F19" />
     </linearGradient>
 
-    <!-- Subtle Luminous Sheen for Prompt & M -->
-    <linearGradient id="prompt-m-grad" x1="52" y1="84" x2="170" y2="136" gradientUnits="userSpaceOnUse">
+    <!-- Subtle Luminous Sheen for Prompt '>' & Vector 'M' -->
+    <linearGradient id="prompt-m-grad" x1="106" y1="84" x2="226" y2="136" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#7DD3FC" />
       <stop offset="50%" stop-color="#38BDF8" />
       <stop offset="100%" stop-color="#0EA5E9" />
     </linearGradient>
 
-    <!-- Wordmark Gradient: Titanium White -> Sky Blue -> Soft Indigo -->
-    <linearGradient id="mustro-word-grad" x1="192" y1="108" x2="530" y2="108" gradientUnits="userSpaceOnUse">
+    <!-- Wordmark Gradient: Titanium White -> Sky Blue -> Soft Indigo (Spans exact USTRO width) -->
+    <linearGradient id="mustro-word-grad" x1="246" y1="108" x2="484" y2="108" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#F8FAFC" />
       <stop offset="55%" stop-color="#38BDF8" />
       <stop offset="100%" stop-color="#818CF8" />
@@ -48,17 +48,18 @@
     cockpit — zsh
   </text>
 
-  <!-- Prompt Chevron '>' (Optically Aligned to Cap-Height & Baseline) -->
-  <path d="M52 89L82 110L52 131" stroke="url(#prompt-m-grad)" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Symmetrically Centered Prompt + Wordmark + Cursor (Left/Right margins ~102px) -->
+  <!-- Prompt Chevron '>' -->
+  <path d="M108 89L138 110L108 131" stroke="url(#prompt-m-grad)" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round" />
 
-  <!-- Vector Letter 'M' (Aligned Flush with USTRO Cap-Height 84 & Baseline 136) -->
-  <path d="M114 131V89L142 116L170 89V131" stroke="url(#prompt-m-grad)" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Vector Letter 'M' (26px gap from '>', flush cap-height & baseline with USTRO) -->
+  <path d="M170 131V89L198 116L226 89V131" stroke="url(#prompt-m-grad)" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round" />
 
-  <!-- Wordmark 'USTRO' (Cross-OS Safe Spacing) -->
-  <text x="194" y="136" fill="url(#mustro-word-grad)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="72" font-weight="800" letter-spacing="4">
+  <!-- Wordmark 'USTRO' (~13px optical kerning from 'M', matching U-S-T-R-O) -->
+  <text x="245" y="136" fill="url(#mustro-word-grad)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="72" font-weight="800" letter-spacing="4">
     USTRO
   </text>
 
-  <!-- Active Running Cursor Block (Exact theme.colors.running #22C55E) -->
-  <rect x="560" y="84" width="22" height="52" rx="4" fill="#22C55E" filter="url(#cursor-glow)" />
+  <!-- Active Running Cursor Block (26px gap from 'O', matching '>' to 'M') -->
+  <rect x="510" y="84" width="22" height="52" rx="4" fill="#22C55E" filter="url(#cursor-glow)" />
 </svg>
