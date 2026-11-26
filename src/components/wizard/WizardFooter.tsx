@@ -16,13 +16,15 @@ export const WizardFooter: React.FC<WizardFooterProps> = React.memo(({ width = 1
       justifyContent="space-between" 
       alignItems="center" 
       width="100%" 
+      height={1}
+      overflow="hidden"
       backgroundColor={theme.colors.canvas}
       marginTop={0}
       paddingX={1}
       flexWrap="nowrap"
     >
       {/* Left shortcut chips */}
-      <Box flexDirection="row" alignItems="center" flexShrink={1}>
+      <Box flexDirection="row" alignItems="center" flexWrap="nowrap" overflow="hidden" flexShrink={1}>
         <Box backgroundColor={theme.colors.accentDark} paddingX={1} marginRight={1}>
           <Text color={theme.colors.accent} bold>Click</Text>
         </Box>

@@ -58,7 +58,7 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Cycle service filter dropdown</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color={theme.colors.running} bold>l  or  Space</Text>
+          <Text color={theme.colors.running} bold>l</Text>
           <Text color={theme.colors.textSecondary}>Toggle Live streaming logs</Text>
         </Box>
         <Box justifyContent="space-between">
@@ -90,7 +90,7 @@ export const HelpModal: React.FC<HelpModalProps> = React.memo(({ onClose, width 
           <Text color={theme.colors.textSecondary}>Copy all error logs for service</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color="#A78BFA" bold>Enter / v / i</Text>
+          <Text color="#A78BFA" bold>Enter / Space / v / i</Text>
           <Text color={theme.colors.textSecondary}>Expand / collapse full JSON inline in feed</Text>
         </Box>
         <Box justifyContent="space-between">

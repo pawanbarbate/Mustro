@@ -4,6 +4,7 @@ import { Header } from '../Header.js';
 import { ClickProvider, Clickable, ClickManagerContextValue } from '../common/ClickManager.js';
 import { useTerminalViewport } from '../../hooks/useTerminalViewport.js';
 import { theme } from '../../theme/theme.js';
+import packageJson from '../../../package.json' with { type: 'json' };
 
 export interface NoConfigWelcomeScreenProps {
   onCreateNew: () => void;
@@ -147,7 +148,7 @@ export const NoConfigWelcomeScreen: React.FC<NoConfigWelcomeScreenProps> = ({
           backgroundColor={theme.colors.canvas} 
           paddingX={1}
         >
-          <Text color={theme.colors.textMuted}>MUSTRO v1.0.0</Text>
+          <Text color={theme.colors.textMuted}>MUSTRO v{packageJson.version}</Text>
           <Text color={theme.colors.textDim}>Enter: Create Config  │  Esc/q: Exit</Text>
         </Box>
       </Box>

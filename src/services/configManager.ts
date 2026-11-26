@@ -98,6 +98,61 @@ export function findAllConfigFiles(cwd: string = process.cwd()): string[] {
   return Array.from(found);
 }
 
+export interface ConfigValidationResult {
+  valid: boolean;
+  config?: MustroConfig;
+  error?: string;
+}
+
+/**
+ * Validate a parsed JSON object against the MustroConfig schema.
+ */
+export function validateMustroConfig(raw: unknown): ConfigValidationResult {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { valid: false, error: 'Configuration root must be a JSON object' };
+  }
+
+  const candidate = raw as Record<string, unknown>;
+  if (!Array.isArray(candidate.services)) {
+    return { valid: false, error: 'Missing services array' };
+  }
+
+  const seenNames = new Set<string>();
+  for (let i = 0; i < candidate.services.length; i++) {
+    const svc = candidate.services[i] as Record<string, unknown> | undefined;
+    if (!svc || typeof svc !== 'object' || Array.isArray(svc)) {
+      return { valid: false, error: `Service at index ${i} must be an object` };
+    }
+    if (typeof svc.name !== 'string' || !svc.name.trim()) {
+      return { valid: false, error: `Service at index ${i} is missing a valid name` };
+    }
+    const normalizedName = svc.name.trim().toLowerCase();
+    if (seenNames.has(normalizedName)) {
+      return { valid: false, error: `Duplicate service name: "${svc.name.trim()}"` };
+    }
+    seenNames.add(normalizedName);
+
+    if (svc.path !== undefined && (typeof svc.path !== 'string' || !svc.path.trim())) {
+      return { valid: false, error: `Service "${svc.name}" has an invalid path` };
+    }
+
+    const hasCommandStr = typeof svc.command === 'string' && svc.command.trim().length > 0;
+    const hasCommandArr = Array.isArray(svc.command) && svc.command.some(c => typeof c === 'string' && c.trim().length > 0);
+    const hasCommandsArr = Array.isArray(svc.commands) && svc.commands.some(c => typeof c === 'string' && c.trim().length > 0);
+    if (!hasCommandStr && !hasCommandArr && !hasCommandsArr) {
+      return { valid: false, error: `Service "${svc.name}" is missing a valid command` };
+    }
+
+    if (svc.port !== undefined) {
+      if (typeof svc.port !== 'number' || !Number.isInteger(svc.port) || svc.port < 1 || svc.port > 65535) {
+        return { valid: false, error: `Service "${svc.name}" has invalid port: ${String(svc.port)}` };
+      }
+    }
+  }
+
+  return { valid: true, config: candidate as unknown as MustroConfig };
+}
+
 /**
  * Retrieve metadata summaries for all configuration files in the workspace.
  */
@@ -107,8 +162,9 @@ export function getConfigFileSummaries(cwd: string = process.cwd()): ConfigFileS
     const filename = path.basename(filePath);
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as MustroConfig;
-      if (parsed && Array.isArray(parsed.services)) {
+      const validation = validateMustroConfig(JSON.parse(raw));
+      if (validation.valid && validation.config) {
+        const parsed = validation.config;
         return {
           path: filePath,
           filename,
@@ -130,7 +186,7 @@ export function getConfigFileSummaries(cwd: string = process.cwd()): ConfigFileS
         servicesCount: 0,
         services: [],
         isValid: false,
-        error: 'Missing services array'
+        error: validation.error || 'Invalid configuration'
       };
     } catch (err: any) {
       return {
@@ -169,8 +225,9 @@ export async function getConfigFileSummariesAsync(
     const filename = path.basename(filePath);
     try {
       const raw = await fs.promises.readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as MustroConfig;
-      if (parsed && Array.isArray(parsed.services)) {
+      const validation = validateMustroConfig(JSON.parse(raw));
+      if (validation.valid && validation.config) {
+        const parsed = validation.config;
         summaries.push({
           path: filePath,
           filename,
@@ -192,7 +249,7 @@ export async function getConfigFileSummariesAsync(
           servicesCount: 0,
           services: [],
           isValid: false,
-          error: 'Missing services array'
+          error: validation.error || 'Invalid configuration'
         });
       }
     } catch (err: any) {
@@ -344,10 +401,11 @@ export function loadConfigFile(cwdOrPath: string = process.cwd()): MustroConfig 
 
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(raw) as MustroConfig;
-    if (parsed && Array.isArray(parsed.services)) {
-      return parsed;
+    const validation = validateMustroConfig(JSON.parse(raw));
+    if (validation.valid && validation.config) {
+      return validation.config;
     }
+    logger.error(`Invalid config at ${filePath}: ${validation.error}`);
     return null;
   } catch (err: any) {
     logger.error(`Failed to parse config at ${filePath}: ${err?.message || err}`);

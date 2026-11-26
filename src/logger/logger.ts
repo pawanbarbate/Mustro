@@ -1,23 +1,13 @@
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-const logDir = path.join(process.cwd(), "logs");
-const logFile = path.join(logDir, "app.log");
-let dirChecked = false;
-
-function ensureLogDir(): void {
-  if (dirChecked) return;
-  try {
-    fs.mkdirSync(logDir, { recursive: true });
-    dirChecked = true;
-  } catch {
-    // Silently continue if directory cannot be created (e.g., read-only filesystem)
-  }
-}
+const isDebugEnabled = () => process.env.MUSTRO_DEBUG === "1" || process.env.MUSTRO_DEBUG === "true";
+const logFile = path.join(os.tmpdir(), "mustro-debug.log");
 
 function writeLog(level: string, message: string): void {
-  ensureLogDir();
+  if (!isDebugEnabled()) return;
   const timestamp = new Date().toISOString();
   const log = `[${timestamp}] [${level}] ${message}\n`;
 

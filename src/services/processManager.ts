@@ -1,4 +1,4 @@
-import { spawn, execSync, ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -6,6 +6,7 @@ import { ServiceConfig, OrchestratorSettings } from '../types/config.js';
 import { LogEntry, ProcessCallbacks, ServiceStatus } from '../types/index.js';
 import { logger } from '../logger/logger.js';
 import { normalizeServiceCommands, resolveDependencyTiers } from './dependencyGraph.js';
+import { sanitizeTerminalOutput } from '../utils/ansi.js';
 
 interface ActiveProcessInfo {
   child: ChildProcess;
@@ -21,6 +22,7 @@ class ProcessManager {
   private activePreCommands = new Set<ChildProcess>();
   private knownConfigs = new Map<string, ServiceConfig>();
   private logCounter = 0;
+  private bootGeneration = 0;
 
   /**
    * Helper to format current time HH:MM:SS
@@ -36,9 +38,10 @@ class ProcessManager {
    * Kill an entire process group cleanly across POSIX and Windows
    */
   private killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM') {
+    if (!Number.isInteger(pid) || pid <= 0) return;
     if (process.platform === 'win32') {
       try {
-        execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+        execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
       } catch {}
     } else {
       try {
@@ -83,7 +86,8 @@ class ProcessManager {
           ...process.env,
           ...env,
           FORCE_COLOR: '1'
-        }
+        },
+        detached: process.platform !== 'win32'
       });
 
       this.activePreCommands.add(child);
@@ -97,12 +101,13 @@ class ProcessManager {
         const lines = stdoutRemainder.split(/\r?\n/);
         stdoutRemainder = lines.pop() || '';
         for (const line of lines) {
-          if (!line.trim()) continue;
+          const cleanLine = sanitizeTerminalOutput(line);
+          if (!cleanLine.trim()) continue;
           callbacks.onLog(service.name, {
             id: `out-${service.name}-${Date.now()}-${this.logCounter++}`,
             timestamp: this.formatTime(),
             service: service.name,
-            message: `  ${line}`,
+            message: `  ${cleanLine}`,
             level: 'info'
           });
         }
@@ -114,12 +119,13 @@ class ProcessManager {
         const lines = stderrRemainder.split(/\r?\n/);
         stderrRemainder = lines.pop() || '';
         for (const line of lines) {
-          if (!line.trim()) continue;
+          const cleanLine = sanitizeTerminalOutput(line);
+          if (!cleanLine.trim()) continue;
           callbacks.onLog(service.name, {
             id: `err-${service.name}-${Date.now()}-${this.logCounter++}`,
             timestamp: this.formatTime(),
             service: service.name,
-            message: `  ${line}`,
+            message: `  ${cleanLine}`,
             level: 'error'
           });
         }
@@ -181,14 +187,26 @@ class ProcessManager {
     });
   }
 
+  private isValidPort(port: number): boolean {
+    return Number.isInteger(port) && port >= 1 && port <= 65535;
+  }
+
   private isPortListeningViaCli(port: number): boolean {
+    if (!this.isValidPort(port)) return false;
     try {
       if (process.platform === 'darwin' || process.platform === 'linux') {
-        const out = execSync(`lsof -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null`, { timeout: 500 }).toString();
+        const out = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], {
+          timeout: 500,
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).toString();
         return out.includes('LISTEN');
       } else if (process.platform === 'win32') {
-        const out = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { timeout: 500 }).toString();
-        return out.includes('LISTENING');
+        const out = execFileSync('netstat', ['-ano'], {
+          timeout: 500,
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).toString();
+        const portToken = `:${port}`;
+        return out.split(/\r?\n/).some(line => line.includes(portToken) && line.includes('LISTENING'));
       }
     } catch {
       return false;
@@ -200,6 +218,7 @@ class ProcessManager {
    * Probe whether a local TCP port is open and listening (with dual-stack IPv4/IPv6 fallback & CLI fallback)
    */
   public async probeTcpPort(port: number, host = '127.0.0.1', timeoutMs = 300): Promise<boolean> {
+    if (!this.isValidPort(port)) return false;
     const ok = await this.singleProbe(port, host, timeoutMs);
     if (ok) return true;
     if (host === '127.0.0.1') {
@@ -246,6 +265,7 @@ class ProcessManager {
     service: ServiceConfig,
     callbacks: ProcessCallbacks
   ): Promise<number | null> {
+    const generation = this.bootGeneration;
     this.knownConfigs.set(service.name, service);
 
     // If currently shutting down, wait up to 1500ms for old process to fully exit
@@ -261,9 +281,10 @@ class ProcessManager {
       return this.activeProcesses.get(service.name)!.pid;
     }
 
-    const resolvedCwd = path.isAbsolute(service.path)
-      ? service.path
-      : path.resolve(process.cwd(), service.path);
+    const servicePath = service.path || '.';
+    const resolvedCwd = path.isAbsolute(servicePath)
+      ? servicePath
+      : path.resolve(process.cwd(), servicePath);
 
     if (!fs.existsSync(resolvedCwd)) {
       const errMsg = `Directory not found: "${service.path}" (resolved: ${resolvedCwd})`;
@@ -288,8 +309,10 @@ class ProcessManager {
     // Execute pre-flight commands sequentially if any exist
     if (pipeline.preCommands.length > 0) {
       for (let i = 0; i < pipeline.preCommands.length; i++) {
+        if (generation !== this.bootGeneration) return null;
         const cmd = pipeline.preCommands[i]!;
         const res = await this.runPreCommand(service, cmd, i, pipeline.totalSteps, resolvedCwd, customEnv, callbacks);
+        if (generation !== this.bootGeneration) return null;
         if (res.exitCode !== 0) {
           callbacks.onStatusChange(
             service.name,
@@ -302,6 +325,8 @@ class ProcessManager {
         }
       }
     }
+
+    if (generation !== this.bootGeneration) return null;
 
     // If there is no final daemon command (e.g. one-shot task service)
     if (!pipeline.finalCommand) {
@@ -367,12 +392,13 @@ class ProcessManager {
         info.stdoutRemainder = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line.trim()) continue;
+          const cleanLine = sanitizeTerminalOutput(line);
+          if (!cleanLine.trim()) continue;
           callbacks.onLog(service.name, {
             id: `out-${service.name}-${Date.now()}-${this.logCounter++}`,
             timestamp: this.formatTime(),
             service: service.name,
-            message: line,
+            message: cleanLine,
             level: 'info'
           });
         }
@@ -385,12 +411,13 @@ class ProcessManager {
         info.stderrRemainder = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line.trim()) continue;
+          const cleanLine = sanitizeTerminalOutput(line);
+          if (!cleanLine.trim()) continue;
           callbacks.onLog(service.name, {
             id: `err-${service.name}-${Date.now()}-${this.logCounter++}`,
             timestamp: this.formatTime(),
             service: service.name,
-            message: line,
+            message: cleanLine,
             level: 'error'
           });
         }
@@ -422,23 +449,29 @@ class ProcessManager {
 
         // Flush remaining buffer lines
         if (info.stdoutRemainder.trim()) {
-          callbacks.onLog(service.name, {
-            id: `out-${service.name}-${Date.now()}-${this.logCounter++}`,
-            timestamp: this.formatTime(),
-            service: service.name,
-            message: info.stdoutRemainder,
-            level: 'info'
-          });
+          const cleanOut = sanitizeTerminalOutput(info.stdoutRemainder);
+          if (cleanOut.trim()) {
+            callbacks.onLog(service.name, {
+              id: `out-${service.name}-${Date.now()}-${this.logCounter++}`,
+              timestamp: this.formatTime(),
+              service: service.name,
+              message: cleanOut,
+              level: 'info'
+            });
+          }
           info.stdoutRemainder = '';
         }
         if (info.stderrRemainder.trim()) {
-          callbacks.onLog(service.name, {
-            id: `err-${service.name}-${Date.now()}-${this.logCounter++}`,
-            timestamp: this.formatTime(),
-            service: service.name,
-            message: info.stderrRemainder,
-            level: 'error'
-          });
+          const cleanErr = sanitizeTerminalOutput(info.stderrRemainder);
+          if (cleanErr.trim()) {
+            callbacks.onLog(service.name, {
+              id: `err-${service.name}-${Date.now()}-${this.logCounter++}`,
+              timestamp: this.formatTime(),
+              service: service.name,
+              message: cleanErr,
+              level: 'error'
+            });
+          }
           info.stderrRemainder = '';
         }
 
@@ -581,6 +614,7 @@ class ProcessManager {
     callbacks: ProcessCallbacks,
     settings?: OrchestratorSettings
   ): Promise<void> {
+    const generation = this.bootGeneration;
     for (const service of services) {
       this.knownConfigs.set(service.name, service);
     }
@@ -639,6 +673,7 @@ class ProcessManager {
 
     // Boot tier by tier with concurrency throttling & pacing stagger
     for (let tierIdx = 0; tierIdx < tiers.length; tierIdx++) {
+      if (generation !== this.bootGeneration) return;
       const tier = tiers[tierIdx]!;
       const readyPromises: Promise<boolean>[] = [];
 
@@ -662,6 +697,7 @@ class ProcessManager {
       };
 
       for (let sIdx = 0; sIdx < tier.length; sIdx++) {
+        if (generation !== this.bootGeneration) return;
         const service = tier[sIdx]!;
 
         // Check if any upstream dependency failed
@@ -682,15 +718,24 @@ class ProcessManager {
 
         // Wait for an available concurrency slot before proceeding
         await acquireSlot();
+        if (generation !== this.bootGeneration) {
+          releaseSlot();
+          return;
+        }
 
         // Stagger spacing between consecutive process spawns in this wave
         if (sIdx > 0 && bootStaggerMs > 0) {
           await new Promise(r => setTimeout(r, bootStaggerMs));
+          if (generation !== this.bootGeneration) {
+            releaseSlot();
+            return;
+          }
         }
 
         // Start service
         const startPromise = (async () => {
           try {
+            if (generation !== this.bootGeneration) return false;
             const pid = await this.startService(service, callbacks);
             if (pid === null) {
               failedServices.add(service.name.toLowerCase());
@@ -736,6 +781,7 @@ class ProcessManager {
    * Asynchronously stop all active processes
    */
   public async stopAll(): Promise<void> {
+    this.bootGeneration++;
     for (const child of this.activePreCommands) {
       if (child.pid) this.killProcessTree(child.pid, 'SIGKILL');
     }
@@ -763,6 +809,7 @@ class ProcessManager {
    * Synchronous stop for process.on('exit') and SIGINT handlers
    */
   public stopAllSync(): void {
+    this.bootGeneration++;
     for (const child of this.activePreCommands) {
       if (child.pid) this.killProcessTree(child.pid, 'SIGKILL');
     }
