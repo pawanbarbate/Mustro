@@ -454,6 +454,29 @@ export function validateDirectory(dirPath: string, cwd: string = process.cwd()):
 export function autoDetectServices(cwd: string = process.cwd()): Partial<ServiceConfig>[] {
   const detected: Partial<ServiceConfig>[] = [];
   const searchDirs = ['services', 'apps', 'packages', 'backend', 'frontend', 'server', 'client'];
+  const seenNames = new Set<string>();
+
+  const reserveServiceName = (dirName: string, baseName: string): string => {
+    const normalizedBase = baseName.trim().toLowerCase();
+    if (!seenNames.has(normalizedBase)) {
+      seenNames.add(normalizedBase);
+      return baseName;
+    }
+
+    const prefixed = `${dirName}-${baseName}`;
+    if (!seenNames.has(prefixed.toLowerCase())) {
+      seenNames.add(prefixed.toLowerCase());
+      return prefixed;
+    }
+
+    let suffix = 2;
+    while (seenNames.has(`${prefixed}-${suffix}`.toLowerCase())) {
+      suffix++;
+    }
+    const uniqueName = `${prefixed}-${suffix}`;
+    seenNames.add(uniqueName.toLowerCase());
+    return uniqueName;
+  };
 
   let assignedPort = 3000;
 
@@ -483,7 +506,7 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
           } catch {}
 
           detected.push({
-            name: entry.name,
+            name: reserveServiceName(dirName, entry.name),
             path: relPath,
             command,
             port: assignedPort++,
@@ -495,7 +518,7 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
         // Check for Cargo / Rust
         if (fs.existsSync(path.join(subDirPath, 'Cargo.toml'))) {
           detected.push({
-            name: entry.name,
+            name: reserveServiceName(dirName, entry.name),
             path: relPath,
             command: 'cargo run',
             autoStart: true
@@ -510,7 +533,7 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
           fs.existsSync(path.join(subDirPath, 'app.py'))
         ) {
           detected.push({
-            name: entry.name,
+            name: reserveServiceName(dirName, entry.name),
             path: relPath,
             command: 'python main.py',
             autoStart: true
@@ -521,7 +544,7 @@ export function autoDetectServices(cwd: string = process.cwd()): Partial<Service
         // Check for Go
         if (fs.existsSync(path.join(subDirPath, 'go.mod'))) {
           detected.push({
-            name: entry.name,
+            name: reserveServiceName(dirName, entry.name),
             path: relPath,
             command: 'go run .',
             autoStart: true

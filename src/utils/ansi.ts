@@ -90,7 +90,9 @@ export function sanitizeTerminalOutput(text: string): string {
   const withoutUnsafeEscapes = text.replace(SGR_OR_ESCAPE, (seq) => {
     return /^\u001B\[[0-9;]*m$/.test(seq) ? seq : '';
   });
-  return withoutUnsafeEscapes.replace(UNSAFE_C0_CONTROL, '');
+  return withoutUnsafeEscapes
+    .replace(/\u001B(?!\[[0-9;]*m)/g, '')
+    .replace(UNSAFE_C0_CONTROL, '');
 }
 
 export function truncateAnsiText(text: string, maxLength: number): string {
