@@ -14,43 +14,19 @@
       <stop offset="100%" stop-color="#1E293B" stop-opacity="0.3"/>
     </linearGradient>
 
-    <!-- Pillar Gradients -->
+    <!-- Prompt Chevron Gradient -->
     <linearGradient id="iconLeftGrad" x1="0%" y1="100%" x2="0%" y2="0%">
       <stop offset="0%" stop-color="#0284C7"/>
       <stop offset="70%" stop-color="#38BDF8"/>
       <stop offset="100%" stop-color="#BAE6FD"/>
     </linearGradient>
 
-    <linearGradient id="iconFoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38BDF8"/>
-      <stop offset="50%" stop-color="#818CF8"/>
-      <stop offset="100%" stop-color="#6366F1"/>
+    <!-- Vector 'M' Wordmark Gradient (Titanium White -> Sky Blue -> Soft Indigo) -->
+    <linearGradient id="iconWordGrad" x1="239" y1="300" x2="413" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="55%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
     </linearGradient>
-
-    <linearGradient id="iconRightGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#6EE7B7"/>
-      <stop offset="45%" stop-color="#22C55E"/>
-      <stop offset="100%" stop-color="#059669"/>
-    </linearGradient>
-
-    <!-- Baton Beam Gradient -->
-    <linearGradient id="iconBatonGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#F59E0B"/>
-      <stop offset="30%" stop-color="#818CF8"/>
-      <stop offset="65%" stop-color="#38BDF8"/>
-      <stop offset="100%" stop-color="#FFFFFF"/>
-    </linearGradient>
-
-    <!-- Clean Bloom Filters (Controlled stdDeviation to prevent clipping/fuzziness) -->
-    <filter id="iconBloom" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="6" result="b1"/>
-      <feGaussianBlur stdDeviation="14" result="b2"/>
-      <feMerge>
-        <feMergeNode in="b2"/>
-        <feMergeNode in="b1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
 
     <filter id="iconShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.65"/>
@@ -63,63 +39,16 @@
   <rect x="24" y="24" width="464" height="464" rx="108" fill="none" stroke="url(#iconRim)" stroke-width="2.5"/>
   <rect x="25.5" y="25.5" width="461" height="461" rx="106.5" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.12"/>
 
-  <!-- 2. Concentric Radar & Tempo Waves (Originating at Baton Star Tip: 395, 130) -->
-  <circle cx="395" cy="130" r="160" fill="none" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="4 8" opacity="0.18"/>
-  <circle cx="395" cy="130" r="105" fill="none" stroke="#818CF8" stroke-width="1.5" stroke-dasharray="6 6" opacity="0.28"/>
-  <circle cx="395" cy="130" r="55" fill="none" stroke="#38BDF8" stroke-width="2" opacity="0.45"/>
+  <!-- 2. Mini Terminal Header Bar -->
+  <path d="M 42 112 H 470" stroke="#1B293B" stroke-width="2.5"/>
+  <circle cx="104" cy="74" r="9" fill="#22C55E"/>
+  <circle cx="136" cy="74" r="9" fill="#F59E0B"/>
+  <circle cx="168" cy="74" r="9" fill="#38BDF8"/>
 
-  <!-- Subtle Radial Aura -->
-  <circle cx="256" cy="270" r="90" fill="#38BDF8" opacity="0.08" filter="url(#iconBloom)"/>
+  <!-- 3. Centered '> M' Monogram (Exact 99px L/R Margins, Center Y=300) -->
+  <!-- Prompt Chevron '>' -->
+  <path d="M 114 244 L 190 300 L 114 356" fill="none" stroke="url(#iconLeftGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- 3. Base Structural Shadow Underlay -->
-  <g fill="none" stroke="#060A13" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" opacity="0.75">
-    <line x1="140" y1="365" x2="140" y2="190"/>
-    <line x1="140" y1="190" x2="256" y2="318"/>
-    <line x1="256" y1="318" x2="395" y2="130"/>
-    <line x1="358" y1="190" x2="358" y2="365"/>
-  </g>
-
-  <!-- 4. The Mustro "M" Elements -->
-
-  <!-- Left Pillar (Cyan / Muster Ingress) -->
-  <line x1="140" y1="365" x2="140" y2="190" stroke="url(#iconLeftGrad)" stroke-width="30" stroke-linecap="round"/>
-  <line x1="140" y1="345" x2="140" y2="210" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
-
-  <!-- Left Diagonal to Center Valley (Indigo / Orchestration Bridge) -->
-  <line x1="140" y1="190" x2="256" y2="318" stroke="url(#iconFoldGrad)" stroke-width="26" stroke-linecap="round"/>
-
-  <!-- Right Pillar (Emerald / Healthy Service Fleet) -->
-  <line x1="358" y1="190" x2="358" y2="365" stroke="url(#iconRightGrad)" stroke-width="30" stroke-linecap="round"/>
-  <line x1="358" y1="210" x2="358" y2="345" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
-
-  <!-- Dynamic Conductor's Baton (Ascending Maestro Beam) -->
-  <!-- Ambient Neon Aura -->
-  <line x1="256" y1="318" x2="395" y2="130" stroke="#38BDF8" stroke-width="32" stroke-linecap="round" opacity="0.45" filter="url(#iconBloom)"/>
-  <!-- Solid Crisp Wand Core -->
-  <line x1="256" y1="318" x2="395" y2="130" stroke="url(#iconBatonGrad)" stroke-width="18" stroke-linecap="round"/>
-  <!-- Specular White Spine -->
-  <line x1="268" y1="302" x2="390" y2="136" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
-
-  <!-- 5. Precision Status Nodes -->
-  <!-- Left Peak Node -->
-  <circle cx="140" cy="190" r="12" fill="#0B0F19"/>
-  <circle cx="140" cy="190" r="8" fill="#38BDF8" filter="url(#iconBloom)"/>
-  <circle cx="140" cy="190" r="3" fill="#FFFFFF"/>
-
-  <!-- Center Valley Node (Warm Amber Accent - Cadence Clock) -->
-  <circle cx="256" cy="318" r="14" fill="#0B0F19"/>
-  <circle cx="256" cy="318" r="9.5" fill="#F59E0B" filter="url(#iconBloom)"/>
-  <circle cx="256" cy="318" r="3.5" fill="#FFFFFF"/>
-
-  <!-- Right Peak Node -->
-  <circle cx="358" cy="190" r="12" fill="#0B0F19"/>
-  <circle cx="358" cy="190" r="8" fill="#22C55E" filter="url(#iconBloom)"/>
-  <circle cx="358" cy="190" r="3" fill="#FFFFFF"/>
-
-  <!-- 6. Baton Tip: Glowing Cue Star Spark -->
-  <g transform="translate(395, 130)">
-    <circle cx="0" cy="0" r="18" fill="#38BDF8" opacity="0.65" filter="url(#iconBloom)"/>
-    <path d="M 0 -24 Q 0 0 -24 0 Q 0 0 0 24 Q 0 0 24 0 Q 0 0 0 -24 Z" fill="#FFFFFF" filter="url(#iconBloom)"/>
-    <circle cx="0" cy="0" r="5" fill="#FFFFFF"/>
-  </g>
+  <!-- Vector Letter 'M' -->
+  <path d="M 254 356 V 244 L 326 312 L 398 244 V 356" fill="none" stroke="url(#iconWordGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
