@@ -107,7 +107,7 @@
   <circle cx="196" cy="180" r="80" fill="#818CF8" opacity="0.10" filter="url(#tightBloom)"/>
 
   <!-- ========================================================================= -->
-  <!-- 2. LEFT LOGOMARK (Unified M Ribbon + Conductor Baton + Precision Nodes)   -->
+  <!-- 2. LEFT LOGOMARK (Terminal Cockpit Icon Plate: > M ▋)                     -->
   <!-- ========================================================================= -->
   <g transform="translate(64, 48)">
     <!-- Icon Container Squircle with Elevation Shadow -->
@@ -116,60 +116,21 @@
     <!-- Hairline Inner Glass Bevel -->
     <rect x="1.5" y="1.5" width="261" height="261" rx="58.5" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.15"/>
 
-    <!-- Concentric Tempo & Radar Pulses (Originating at Baton Star Tip: 204, 68) -->
-    <circle cx="204" cy="68" r="82" fill="none" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="3 6" opacity="0.20"/>
-    <circle cx="204" cy="68" r="54" fill="none" stroke="#818CF8" stroke-width="1.5" stroke-dasharray="5 5" opacity="0.30"/>
-    <circle cx="204" cy="68" r="28" fill="none" stroke="#38BDF8" stroke-width="1.8" opacity="0.45"/>
+    <!-- Mini Terminal Header Bar -->
+    <path d="M 10 48 H 254" stroke="#1B293B" stroke-width="1.5"/>
+    <circle cx="44" cy="28" r="5" fill="#22C55E"/>
+    <circle cx="62" cy="28" r="5" fill="#F59E0B"/>
+    <circle cx="80" cy="28" r="5" fill="#38BDF8"/>
 
-    <!-- Structural Shadow Underlay -->
-    <g fill="none" stroke="#060A13" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="0.75">
-      <line x1="72" y1="198" x2="72" y2="108"/>
-      <line x1="72" y1="108" x2="132" y2="174"/>
-      <line x1="132" y1="174" x2="204" y2="68"/>
-      <line x1="184" y1="108" x2="184" y2="198"/>
-    </g>
+    <!-- Centered Terminal Prompt + Vector M + Cursor (Margins: 38px L/R, Center Y=156) -->
+    <!-- Prompt Chevron '>' -->
+    <path d="M 46 126 L 84 156 L 46 186" fill="none" stroke="url(#leftPillarGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 
-    <!-- Left Pillar (Cyan / Muster Stack Ingress) -->
-    <line x1="72" y1="198" x2="72" y2="108" stroke="url(#leftPillarGrad)" stroke-width="20" stroke-linecap="round"/>
-    <line x1="72" y1="188" x2="72" y2="118" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+    <!-- Vector Letter 'M' -->
+    <path d="M 112 186 V 126 L 150 162 L 188 126 V 186" fill="none" stroke="url(#mustroTitleGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 
-    <!-- Left Diagonal to Center Valley (Indigo / Orchestration Bridge) -->
-    <line x1="72" y1="108" x2="132" y2="174" stroke="url(#leftFoldGrad)" stroke-width="18" stroke-linecap="round"/>
-
-    <!-- Right Pillar (Emerald / Healthy Service Fleet) -->
-    <line x1="184" y1="108" x2="184" y2="198" stroke="url(#rightPillarGrad)" stroke-width="20" stroke-linecap="round"/>
-    <line x1="184" y1="118" x2="184" y2="188" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
-
-    <!-- Dynamic Conductor's Baton (Ascending Maestro Beam) -->
-    <!-- Ambient Neon Aura -->
-    <line x1="132" y1="174" x2="204" y2="68" stroke="#38BDF8" stroke-width="22" stroke-linecap="round" opacity="0.45" filter="url(#tightBloom)"/>
-    <!-- Solid Crisp Wand -->
-    <line x1="132" y1="174" x2="204" y2="68" stroke="url(#batonBeamGrad)" stroke-width="12" stroke-linecap="round"/>
-    <!-- Specular White Spine -->
-    <line x1="138" y1="165" x2="202" y2="71" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
-
-    <!-- Precision Status Nodes -->
-    <!-- Left Peak Ingress Node -->
-    <circle cx="72" cy="108" r="8" fill="#0B0F19"/>
-    <circle cx="72" cy="108" r="5.5" fill="#38BDF8" filter="url(#tightBloom)"/>
-    <circle cx="72" cy="108" r="2" fill="#FFFFFF"/>
-
-    <!-- Center Bottom Vertex Node (Warm Amber Accent - Orchestration Clock) -->
-    <circle cx="132" cy="174" r="9" fill="#0B0F19"/>
-    <circle cx="132" cy="174" r="6" fill="#F59E0B" filter="url(#tightBloom)"/>
-    <circle cx="132" cy="174" r="2.5" fill="#FFFFFF"/>
-
-    <!-- Right Peak Fleet Node -->
-    <circle cx="184" cy="108" r="8" fill="#0B0F19"/>
-    <circle cx="184" cy="108" r="5.5" fill="#22C55E" filter="url(#tightBloom)"/>
-    <circle cx="184" cy="108" r="2" fill="#FFFFFF"/>
-
-    <!-- Baton Tip: Glowing Cue Star Spark -->
-    <g transform="translate(204, 68)">
-      <circle cx="0" cy="0" r="12" fill="#38BDF8" opacity="0.65" filter="url(#tightBloom)"/>
-      <path d="M 0 -14 Q 0 0 -14 0 Q 0 0 0 14 Q 0 0 14 0 Q 0 0 0 -14 Z" fill="#FFFFFF" filter="url(#tightBloom)"/>
-      <circle cx="0" cy="0" r="3.5" fill="#FFFFFF"/>
-    </g>
+    <!-- Active Running Terminal Cursor Block -->
+    <rect x="208" y="118" width="18" height="76" rx="5" fill="#22C55E" filter="url(#tightBloom)"/>
   </g>
 
   <!-- ========================================================================= -->
