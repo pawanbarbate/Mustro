@@ -22,22 +22,11 @@
     </linearGradient>
 
     <!-- Vector 'M' Wordmark Gradient (Titanium White -> Sky Blue -> Soft Indigo) -->
-    <linearGradient id="iconWordGrad" x1="206" y1="298" x2="366" y2="298" gradientUnits="userSpaceOnUse">
+    <linearGradient id="iconWordGrad" x1="239" y1="300" x2="413" y2="300" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#F8FAFC"/>
       <stop offset="55%" stop-color="#38BDF8"/>
       <stop offset="100%" stop-color="#818CF8"/>
     </linearGradient>
-
-    <!-- Clean Bloom Filter (Wide X bounds so narrow cursor glow never clips) -->
-    <filter id="iconBloom" x="-150%" y="-40%" width="400%" height="180%">
-      <feGaussianBlur stdDeviation="6" result="b1"/>
-      <feGaussianBlur stdDeviation="14" result="b2"/>
-      <feMerge>
-        <feMergeNode in="b2"/>
-        <feMergeNode in="b1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
 
     <filter id="iconShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.65"/>
@@ -56,13 +45,10 @@
   <circle cx="136" cy="74" r="9" fill="#F59E0B"/>
   <circle cx="168" cy="74" r="9" fill="#38BDF8"/>
 
-  <!-- 3. Centered Terminal Prompt + Vector M + Cursor (L/R Margins ~90px, Gaps 22px, Center Y=298) -->
+  <!-- 3. Centered '> M' Monogram (Exact 99px L/R Margins, Center Y=300) -->
   <!-- Prompt Chevron '>' -->
-  <path d="M 104 246 L 170 298 L 104 350" fill="none" stroke="url(#iconLeftGrad)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 114 244 L 190 300 L 114 356" fill="none" stroke="url(#iconLeftGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- Vector Letter 'M' -->
-  <path d="M 220 350 V 246 L 286 310 L 352 246 V 350" fill="none" stroke="url(#iconWordGrad)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- Active Running Terminal Cursor Block (#22C55E) -->
-  <rect x="388" y="232" width="32" height="132" rx="9" fill="#22C55E" filter="url(#iconBloom)"/>
+  <path d="M 254 356 V 244 L 326 312 L 398 244 V 356" fill="none" stroke="url(#iconWordGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
