@@ -1,0 +1,232 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="100%" height="100%">
+  <defs>
+    <!-- Background Canvas Gradients -->
+    <linearGradient id="bannerBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0E1729"/>
+      <stop offset="45%" stop-color="#0B0F19"/>
+      <stop offset="100%" stop-color="#050811"/>
+    </linearGradient>
+
+    <!-- Outer Dual-Tone Border (High Contrast against Dark & Light GitHub) -->
+    <linearGradient id="bannerBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.95"/>
+      <stop offset="35%" stop-color="#818CF8" stop-opacity="0.6"/>
+      <stop offset="70%" stop-color="#334155" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#1E293B" stop-opacity="0.6"/>
+    </linearGradient>
+
+    <!-- Title Gradient (Luminous Titanium to Electric Cyan) -->
+    <linearGradient id="mustroTitleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="35%" stop-color="#F0F9FF"/>
+      <stop offset="70%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+
+    <!-- Icon Plate Glass Gradient -->
+    <linearGradient id="iconPlateBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#131C2E"/>
+      <stop offset="60%" stop-color="#0B0F19"/>
+      <stop offset="100%" stop-color="#070A12"/>
+    </linearGradient>
+
+    <!-- Icon Plate Border -->
+    <linearGradient id="iconPlateRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#818CF8" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#1E293B" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <!-- Baton Beam Gradient -->
+    <linearGradient id="batonBeamGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="30%" stop-color="#818CF8"/>
+      <stop offset="65%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+
+    <!-- Pillar Gradients -->
+    <linearGradient id="leftPillarGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7"/>
+      <stop offset="70%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#BAE6FD"/>
+    </linearGradient>
+
+    <linearGradient id="leftFoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+
+    <linearGradient id="rightPillarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="45%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- Precise, Clean Bloom Filters (No clipped or overly fuzzy halos) -->
+    <filter id="tightBloom" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="b1"/>
+      <feGaussianBlur stdDeviation="8" result="b2"/>
+      <feMerge>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="plateShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- 1. Outer Frame & Background -->
+  <!-- Outer hairline definition border for universal contrast (dark + light theme GitHub) -->
+  <rect x="7" y="7" width="1186" height="346" rx="29" fill="none" stroke="#334155" stroke-width="1" opacity="0.6"/>
+  <!-- Primary Card Background -->
+  <rect x="8" y="8" width="1184" height="344" rx="28" fill="url(#bannerBg)"/>
+  <rect x="8" y="8" width="1184" height="344" rx="28" fill="none" stroke="url(#bannerBorder)" stroke-width="2"/>
+  <!-- Inner Specular Hairline -->
+  <rect x="9" y="9" width="1182" height="342" rx="27" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.08"/>
+
+  <!-- Subtle Studio Grid Pattern -->
+  <g stroke="#1E293B" stroke-width="1" opacity="0.22">
+    <line x1="80" y1="8" x2="80" y2="352"/>
+    <line x1="280" y1="8" x2="280" y2="352"/>
+    <line x1="480" y1="8" x2="480" y2="352"/>
+    <line x1="680" y1="8" x2="680" y2="352"/>
+    <line x1="880" y1="8" x2="880" y2="352"/>
+    <line x1="1080" y1="8" x2="1080" y2="352"/>
+    <line x1="8" y1="90" x2="1192" y2="90"/>
+    <line x1="8" y1="180" x2="1192" y2="180"/>
+    <line x1="8" y1="270" x2="1192" y2="270"/>
+  </g>
+
+  <!-- Volumetric Radial Glow behind Left Icon Plate -->
+  <circle cx="196" cy="180" r="140" fill="#38BDF8" opacity="0.12" filter="url(#tightBloom)"/>
+  <circle cx="196" cy="180" r="80" fill="#818CF8" opacity="0.10" filter="url(#tightBloom)"/>
+
+  <!-- ========================================================================= -->
+  <!-- 2. LEFT LOGOMARK (Unified M Ribbon + Conductor Baton + Precision Nodes)   -->
+  <!-- ========================================================================= -->
+  <g transform="translate(64, 48)">
+    <!-- Icon Container Squircle with Elevation Shadow -->
+    <rect x="0" y="0" width="264" height="264" rx="60" fill="url(#iconPlateBg)" filter="url(#plateShadow)"/>
+    <rect x="0" y="0" width="264" height="264" rx="60" fill="none" stroke="url(#iconPlateRim)" stroke-width="2"/>
+    <!-- Hairline Inner Glass Bevel -->
+    <rect x="1.5" y="1.5" width="261" height="261" rx="58.5" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.15"/>
+
+    <!-- Concentric Tempo & Radar Pulses (Originating at Baton Star Tip: 204, 68) -->
+    <circle cx="204" cy="68" r="82" fill="none" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="3 6" opacity="0.20"/>
+    <circle cx="204" cy="68" r="54" fill="none" stroke="#818CF8" stroke-width="1.5" stroke-dasharray="5 5" opacity="0.30"/>
+    <circle cx="204" cy="68" r="28" fill="none" stroke="#38BDF8" stroke-width="1.8" opacity="0.45"/>
+
+    <!-- Structural Shadow Underlay -->
+    <g fill="none" stroke="#060A13" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="0.75">
+      <line x1="72" y1="198" x2="72" y2="108"/>
+      <line x1="72" y1="108" x2="132" y2="174"/>
+      <line x1="132" y1="174" x2="204" y2="68"/>
+      <line x1="184" y1="108" x2="184" y2="198"/>
+    </g>
+
+    <!-- Left Pillar (Cyan / Muster Stack Ingress) -->
+    <line x1="72" y1="198" x2="72" y2="108" stroke="url(#leftPillarGrad)" stroke-width="20" stroke-linecap="round"/>
+    <line x1="72" y1="188" x2="72" y2="118" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+
+    <!-- Left Diagonal to Center Valley (Indigo / Orchestration Bridge) -->
+    <line x1="72" y1="108" x2="132" y2="174" stroke="url(#leftFoldGrad)" stroke-width="18" stroke-linecap="round"/>
+
+    <!-- Right Pillar (Emerald / Healthy Service Fleet) -->
+    <line x1="184" y1="108" x2="184" y2="198" stroke="url(#rightPillarGrad)" stroke-width="20" stroke-linecap="round"/>
+    <line x1="184" y1="118" x2="184" y2="188" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+
+    <!-- Dynamic Conductor's Baton (Ascending Maestro Beam) -->
+    <!-- Ambient Neon Aura -->
+    <line x1="132" y1="174" x2="204" y2="68" stroke="#38BDF8" stroke-width="22" stroke-linecap="round" opacity="0.45" filter="url(#tightBloom)"/>
+    <!-- Solid Crisp Wand -->
+    <line x1="132" y1="174" x2="204" y2="68" stroke="url(#batonBeamGrad)" stroke-width="12" stroke-linecap="round"/>
+    <!-- Specular White Spine -->
+    <line x1="138" y1="165" x2="202" y2="71" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+
+    <!-- Precision Status Nodes -->
+    <!-- Left Peak Ingress Node -->
+    <circle cx="72" cy="108" r="8" fill="#0B0F19"/>
+    <circle cx="72" cy="108" r="5.5" fill="#38BDF8" filter="url(#tightBloom)"/>
+    <circle cx="72" cy="108" r="2" fill="#FFFFFF"/>
+
+    <!-- Center Bottom Vertex Node (Warm Amber Accent - Orchestration Clock) -->
+    <circle cx="132" cy="174" r="9" fill="#0B0F19"/>
+    <circle cx="132" cy="174" r="6" fill="#F59E0B" filter="url(#tightBloom)"/>
+    <circle cx="132" cy="174" r="2.5" fill="#FFFFFF"/>
+
+    <!-- Right Peak Fleet Node -->
+    <circle cx="184" cy="108" r="8" fill="#0B0F19"/>
+    <circle cx="184" cy="108" r="5.5" fill="#22C55E" filter="url(#tightBloom)"/>
+    <circle cx="184" cy="108" r="2" fill="#FFFFFF"/>
+
+    <!-- Baton Tip: Glowing Cue Star Spark -->
+    <g transform="translate(204, 68)">
+      <circle cx="0" cy="0" r="12" fill="#38BDF8" opacity="0.65" filter="url(#tightBloom)"/>
+      <path d="M 0 -14 Q 0 0 -14 0 Q 0 0 0 14 Q 0 0 14 0 Q 0 0 0 -14 Z" fill="#FFFFFF" filter="url(#tightBloom)"/>
+      <circle cx="0" cy="0" r="3.5" fill="#FFFFFF"/>
+    </g>
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- 3. RIGHT CONTENT (Refined Typography, Breathing Space & Crisp Badges)     -->
+  <!-- ========================================================================= -->
+  <g transform="translate(378, 56)">
+    <!-- Terminal Cockpit Pill Badge -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="176" height="30" rx="8" fill="#131F33" stroke="#2B3E5B" stroke-width="1.2"/>
+      <!-- Pulsing Online Dot -->
+      <circle cx="16" cy="15" r="4.5" fill="#22C55E" filter="url(#tightBloom)"/>
+      <circle cx="16" cy="15" r="2.5" fill="#DCFCE7"/>
+      <text x="28" y="20" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#38BDF8" letter-spacing="0.8">TERMINAL COCKPIT</text>
+    </g>
+
+    <!-- Main Title: MUSTRO -->
+    <text x="0" y="94" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif" font-size="76" font-weight="900" letter-spacing="-1.5" fill="url(#mustroTitleGrad)">
+      MUSTRO
+    </text>
+
+    <!-- Primary Tagline -->
+    <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif" font-size="25" font-weight="700" fill="#FFFFFF" letter-spacing="-0.3">
+      One command, your whole stack.
+    </text>
+
+    <!-- Tightened, High-Breathing Subheadline (User Polish Request 1 & 3) -->
+    <text x="0" y="172" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif" font-size="16.5" font-weight="500" fill="#94A3B8" letter-spacing="0.1">
+      Local dev stack orchestration — fusing <tspan fill="#38BDF8" font-weight="700">Maestro</tspan> &amp; <tspan fill="#818CF8" font-weight="700">Muster</tspan>.
+    </text>
+
+    <!-- ======================================================================= -->
+    <!-- 4. FEATURE PILLS ROW (Boosted Contrast, Crisp Borders, Aligned Icons)   -->
+    <!-- ======================================================================= -->
+    <g transform="translate(0, 206)">
+      <!-- Pill 1: DAG Cascades -->
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="144" height="34" rx="8" fill="#111C2E" stroke="#38BDF8" stroke-width="1.2" stroke-opacity="0.45"/>
+        <text x="14" y="22" font-family="'JetBrains Mono', -apple-system, monospace" font-size="12" font-weight="700" fill="#38BDF8">⚡ DAG CASCADES</text>
+      </g>
+
+      <!-- Pill 2: Mouse TUI -->
+      <g transform="translate(156, 0)">
+        <rect x="0" y="0" width="130" height="34" rx="8" fill="#111C2E" stroke="#22C55E" stroke-width="1.2" stroke-opacity="0.45"/>
+        <text x="14" y="22" font-family="'JetBrains Mono', -apple-system, monospace" font-size="12" font-weight="700" fill="#22C55E">🖱 MOUSE TUI</text>
+      </g>
+
+      <!-- Pill 3: Zero Zombies -->
+      <g transform="translate(298, 0)">
+        <rect x="0" y="0" width="148" height="34" rx="8" fill="#111C2E" stroke="#F59E0B" stroke-width="1.2" stroke-opacity="0.45"/>
+        <text x="14" y="22" font-family="'JetBrains Mono', -apple-system, monospace" font-size="12" font-weight="700" fill="#F59E0B">🛡 ZERO ZOMBIES</text>
+      </g>
+
+      <!-- Pill 4: React 19 + Ink -->
+      <g transform="translate(458, 0)">
+        <rect x="0" y="0" width="162" height="34" rx="8" fill="#111C2E" stroke="#818CF8" stroke-width="1.2" stroke-opacity="0.45"/>
+        <text x="14" y="22" font-family="'JetBrains Mono', -apple-system, monospace" font-size="12" font-weight="700" fill="#A5B4FC">⚛ REACT 19 + INK</text>
+      </g>
+    </g>
+  </g>
+</svg>
