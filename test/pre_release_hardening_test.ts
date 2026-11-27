@@ -1,6 +1,9 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { sanitizeTerminalOutput } from '../src/utils/ansi.js';
-import { validateMustroConfig } from '../src/services/configManager.js';
+import { autoDetectServices, validateMustroConfig } from '../src/services/configManager.js';
 import { processManager } from '../src/services/processManager.js';
 import { theme } from '../src/theme/theme.js';
 
@@ -22,6 +25,12 @@ console.log('=== STARTING PRE-RELEASE HARDENING TESTS ===\n');
 
   const bellAndNul = 'a\x00b\x07c\td';
   assert.strictEqual(sanitizeTerminalOutput(bellAndNul), 'abc\td', 'NUL/BEL stripped while tab preserved');
+
+  const unterminatedOsc = 'prefix\x1b]0;unterminated-title';
+  assert.strictEqual(sanitizeTerminalOutput(unterminatedOsc), 'prefix0;unterminated-title', 'Un-terminated OSC ESC byte must be stripped');
+
+  const solitaryEsc = 'bad\x1b31mText';
+  assert.strictEqual(sanitizeTerminalOutput(solitaryEsc), 'bad31mText', 'Solitary ESC without [ must be stripped');
   console.log('✔ [Test 1] sanitizeTerminalOutput strips unsafe control sequences while preserving SGR');
 }
 
@@ -100,4 +109,25 @@ console.log('=== STARTING PRE-RELEASE HARDENING TESTS ===\n');
   console.log('✔ [Test 5] theme.ansi.restoreScreen includes complete mouse & alt-screen cleanup');
 }
 
-console.log('\n✅ ALL PRE-RELEASE HARDENING TESTS PASSED (5/5)!');
+// 6. autoDetectServices disambiguates duplicate monorepo service names
+{
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustro-monorepo-'));
+  try {
+    fs.mkdirSync(path.join(tmpRoot, 'apps', 'web'), { recursive: true });
+    fs.mkdirSync(path.join(tmpRoot, 'packages', 'web'), { recursive: true });
+    fs.writeFileSync(path.join(tmpRoot, 'apps', 'web', 'package.json'), JSON.stringify({ name: 'web', scripts: { dev: 'vite' } }));
+    fs.writeFileSync(path.join(tmpRoot, 'packages', 'web', 'package.json'), JSON.stringify({ name: 'web-pkg', scripts: { start: 'node index.js' } }));
+
+    const detected = autoDetectServices(tmpRoot);
+    assert.strictEqual(detected.length, 2, 'Both monorepo services should be detected');
+    assert.strictEqual(detected[0]?.name, 'web');
+    assert.strictEqual(detected[1]?.name, 'packages-web');
+    const validation = validateMustroConfig({ services: detected });
+    assert.strictEqual(validation.valid, true, `Auto-detected monorepo config must validate: ${validation.error ?? ''}`);
+    console.log('✔ [Test 6] autoDetectServices disambiguates duplicate monorepo service names');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+console.log('\n✅ ALL PRE-RELEASE HARDENING TESTS PASSED (6/6)!');

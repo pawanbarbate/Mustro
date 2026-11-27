@@ -500,8 +500,13 @@ export function useTerminalInput({
         dispatch({ type: 'SET_SEARCHING', isSearching: false });
       } else if (key.backspace || key.delete) {
         dispatch({ type: 'POP_SEARCH_CHAR' });
-      } else if (input) {
-        dispatch({ type: 'APPEND_SEARCH_CHAR', char: input });
+      } else if (input && !key.ctrl && !key.meta) {
+        const cleanInput = input
+          .replace(/\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\)|.)/g, '')
+          .replace(/[\u0000-\u001F\u007F]/g, '');
+        if (cleanInput) {
+          dispatch({ type: 'APPEND_SEARCH_CHAR', char: cleanInput });
+        }
       }
       return;
     }

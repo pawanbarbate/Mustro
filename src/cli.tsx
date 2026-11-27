@@ -84,6 +84,16 @@ process.once('SIGTERM', () => {
   cleanup();
   process.exit(0);
 });
+process.once('uncaughtException', (err) => {
+  cleanup();
+  console.error('Fatal error in MUSTRO:', err);
+  process.exit(1);
+});
+process.once('unhandledRejection', (reason) => {
+  cleanup();
+  console.error('Unhandled rejection in MUSTRO:', reason);
+  process.exit(1);
+});
 
 const cliArgs = parseCliArgs();
 if (cliArgs.configPath && !hasConfigFile(cliArgs.configPath)) {
