@@ -107,7 +107,7 @@
   <circle cx="196" cy="180" r="80" fill="#818CF8" opacity="0.10" filter="url(#tightBloom)"/>
 
   <!-- ========================================================================= -->
-  <!-- 2. LEFT LOGOMARK (Terminal Cockpit Icon Plate: > M ▋)                     -->
+  <!-- 2. LEFT LOGOMARK (Terminal Cockpit Icon Plate: > M Monogram)              -->
   <!-- ========================================================================= -->
   <g transform="translate(64, 48)">
     <!-- Icon Container Squircle with Elevation Shadow -->
@@ -122,15 +122,12 @@
     <circle cx="62" cy="28" r="5" fill="#F59E0B"/>
     <circle cx="80" cy="28" r="5" fill="#38BDF8"/>
 
-    <!-- Centered Terminal Prompt + Vector M + Cursor (Margins: 38px L/R, Center Y=156) -->
+    <!-- Centered '> M' Monogram (Exact 47px L/R Margins, Center Y=156) -->
     <!-- Prompt Chevron '>' -->
-    <path d="M 46 126 L 84 156 L 46 186" fill="none" stroke="url(#leftPillarGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 56 124 L 96 156 L 56 188" fill="none" stroke="url(#leftPillarGrad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Vector Letter 'M' -->
-    <path d="M 112 186 V 126 L 150 162 L 188 126 V 186" fill="none" stroke="url(#mustroTitleGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-
-    <!-- Active Running Terminal Cursor Block -->
-    <rect x="208" y="118" width="18" height="76" rx="5" fill="#22C55E" filter="url(#tightBloom)"/>
+    <path d="M 136 188 V 124 L 172 162 L 208 124 V 188" fill="none" stroke="url(#mustroTitleGrad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 
   <!-- ========================================================================= -->
