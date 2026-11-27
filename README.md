@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/mustro-banner.svg" alt="MUSTRO — One command, your whole stack" width="100%">
+  <img src="assets/mustro-cockpit.svg" alt="MUSTRO — One command, your whole stack" width="640">
 </p>
 
 # MUSTRO 🪄⚡
